@@ -26,6 +26,11 @@ export default {
         "default-src": ["self"],
         "script-src": ["self"],
         "style-src": ["self"],
+        // The framework adds this visually-hidden style on its route announcer.
+        "style-src-attr": [
+          "unsafe-hashes",
+          "sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo=",
+        ],
         "img-src": ["self", "data:"],
         "connect-src": ["self"],
         "base-uri": ["none"],
