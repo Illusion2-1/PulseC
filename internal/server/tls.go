@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"os"
 	"time"
 )
 
@@ -26,6 +27,20 @@ func loadCertificate(cfg Config) (tls.Certificate, string, error) {
 		return tls.Certificate{}, "", errors.New("public listeners require -cert and -key")
 	}
 	return localCert()
+}
+
+// A dangling file symlink is a broken installation, not a fresh issuance.
+func missingPair(cfg Config, loadErr error) (bool, error) {
+	for _, path := range []string{cfg.CertFile, cfg.KeyFile} {
+		_, err := os.Lstat(path)
+		if err == nil {
+			return false, loadErr
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func localCert() (tls.Certificate, string, error) {

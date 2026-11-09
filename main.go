@@ -21,6 +21,9 @@ var assets embed.FS
 func main() {
 	var cfg server.Config
 	flag.StringVar(&cfg.Addr, "addr", "127.0.0.1:8443", "TCP and UDP listen address")
+	flag.StringVar(&cfg.HTTPAddr, "http-addr", "", "direct deployment: plaintext TCP listener for HTTP-01 and HTTPS redirects")
+	flag.StringVar(&cfg.PublicHost, "public-host", "", "direct deployment: canonical DNS hostname for HTTPS redirects")
+	flag.StringVar(&cfg.ACMEWebroot, "acme-webroot", "", "direct deployment: existing ACME client webroot directory")
 	flag.StringVar(&cfg.CertFile, "cert", "", "HTTPS certificate chain")
 	flag.StringVar(&cfg.KeyFile, "key", "", "HTTPS private key")
 	flag.IntVar(&cfg.MaxSessions, "max-sessions", 1024, "maximum simultaneous WebTransport sessions (1–4096)")
