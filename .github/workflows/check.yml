@@ -32,7 +32,7 @@ jobs:
       - run: make check security
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
-          go test -run=^$ -fuzz=FuzzUntrustedCommand -fuzztime=30s .
+          go test -run=^$ -fuzz=FuzzUntrustedCommand -fuzztime=30s ./internal/chat
           PULSEC_CHURN_BIN="$PWD/dist/pulsec" go test -timeout=12m -count=1 -run=TestWebTransportChurn ./qa
           cd qa
           npm ci --no-audit --no-fund
