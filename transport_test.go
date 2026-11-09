@@ -1,0 +1,90 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/quic-go/quic-go/http3"
+	wt "github.com/quic-go/webtransport-go"
+)
+
+// Exercise framing over the production QUIC, HTTP/3 and WebTransport stack.
+// A bad client must be disconnected before any following command is processed.
+func TestRejectBadFramesOverWebTransport(t *testing.T) {
+	cert, _, err := localCert()
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(leaf)
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := "https://" + listener.LocalAddr().String()
+	h := newHub()
+	mux := http.NewServeMux()
+	wtServer := &wt.Server{H3: &http3.Server{TLSConfig: http3.ConfigureTLSConfig(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}), Handler: browserHeaders(false, mux)}}
+	gate := newIngress(8)
+	gate.configure(wtServer)
+	mux.HandleFunc("/connect", gate.connect(wtServer, h, false))
+	done := make(chan error, 1)
+	go func() { done <- wtServer.Serve(listener) }()
+	t.Cleanup(func() { _ = wtServer.Close(); _ = listener.Close(); <-done })
+	dial := func() (*wt.Stream, *wt.Session) {
+		tr := &wt.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
+		t.Cleanup(func() { _ = tr.Close() })
+		ctx, cancel := context.WithTimeout(t.Context(), 4*time.Second)
+		defer cancel()
+		_, sess, err := tr.Dial(ctx, origin+"/connect", http.Header{"Origin": {origin}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream, err := sess.OpenStreamSync(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = stream.SetDeadline(time.Now().Add(4 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		return stream, sess
+	}
+	healthy, _ := dial()
+	// Send a ping to materialise the healthy bidirectional stream on the server.
+	ping := func() {
+		if _, err := healthy.Write([]byte("{\"op\":\"ping\",\"id\":\"alive\"}\n")); err != nil {
+			t.Fatal(err)
+		}
+		reply, err := bufio.NewReader(healthy).ReadString('\n')
+		if err != nil || !strings.Contains(reply, "\"pong\"") {
+			t.Fatal("healthy stream failed", reply, err)
+		}
+	}
+	ping()
+	for _, frame := range [][]byte{bytes.Repeat([]byte("x"), 32768), []byte("{broken}"), []byte("{\"op\":\"ping\",\"id\":\"\xff\"}")} {
+		stream, sess := dial()
+		if _, err := stream.Write(append(frame, []byte("\n{\"op\":\"ping\"}\n")...)); err != nil {
+			t.Fatal(err)
+		}
+		var b [1]byte
+		n, err := stream.Read(b[:])
+		if n != 0 || err == nil || os.IsTimeout(err) {
+			t.Fatalf("bad frame not rejected: n=%d err=%v", n, err)
+		}
+		_ = sess.CloseWithError(0, "")
+	}
+	ping()
+}

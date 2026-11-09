@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -14,14 +13,20 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/quic-go/quic-go/http3"
-	"github.com/quic-go/webtransport-go"
+	"io"
 	"io/fs"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
+	"golang.org/x/net/netutil"
 )
 
 //go:embed all:web/build
@@ -43,11 +48,21 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8443", "TCP and UDP listen address")
 	certFile := flag.String("cert", "", "HTTPS certificate chain")
 	keyFile := flag.String("key", "", "HTTPS private key")
+	maxSessions := flag.Int("max-sessions", 1024, "maximum simultaneous WebTransport sessions (1–4096)")
+	sourceRate := flag.Int("source-rate", 128, "messages per second per source IP across trips (1–4096; burst is twice the rate)")
+	statsInterval := flag.Duration("stats-interval", 0, "print anonymous aggregate counters periodically (0 disables)")
 	version := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *version {
 		fmt.Println("PulseC 0.1.0-rc.1")
 		return
+	}
+	// Transport libraries may include peer-supplied errors and addresses in their
+	// default logs. Log only explicit operator events and anonymous counters.
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+	log.SetOutput(io.Discard)
+	if *maxSessions < 1 || *maxSessions > 4096 || *statsInterval < 0 || *sourceRate < 1 || *sourceRate > 4096 {
+		logger.Fatal("invalid max-sessions, stats-interval or source-rate")
 	}
 	var cert tls.Certificate
 	var pin string
@@ -55,101 +70,83 @@ func main() {
 	local := *certFile == "" && *keyFile == ""
 	if local {
 		host, _, e := net.SplitHostPort(*addr)
-		if e != nil || !(host == "localhost" || net.ParseIP(host).IsLoopback()) {
-			log.Fatal("public listeners require -cert and -key")
+		if e != nil || !loopbackHost(host) {
+			logger.Fatal("public listeners require -cert and -key")
 		}
 		cert, pin, err = localCert()
 	} else {
 		cert, err = tls.LoadX509KeyPair(*certFile, *keyFile)
 	}
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	conf := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
 	mux := http.NewServeMux()
-	wt := &webtransport.Server{H3: &http3.Server{Addr: *addr, TLSConfig: http3.ConfigureTLSConfig(conf.Clone()), Handler: mux}}
+	wt := &webtransport.Server{H3: &http3.Server{Addr: *addr, TLSConfig: http3.ConfigureTLSConfig(conf.Clone()), Handler: browserHeaders(local, mux)}}
 	hub := newHub()
-	mux.HandleFunc("/connect", func(w http.ResponseWriter, r *http.Request) {
-		if r.ProtoMajor != 3 || r.Method != "CONNECT" {
-			http.Error(w, "WebTransport required", 400)
-			return
-		}
-		// The development page uses HTTP loopback, production always uses HTTPS.
-		scheme := "https://"
-		if local {
-			scheme = "http://"
-		}
-		if r.Header.Get("Origin") != scheme+r.Host {
-			http.Error(w, "origin", 403)
-			return
-		}
-		sess, e := wt.Upgrade(w, r)
-		if e != nil {
-			return
-		}
-		defer sess.CloseWithError(0, "closed")
-		ctx, cancel := context.WithTimeout(sess.Context(), 10*time.Second)
-		defer cancel()
-		stream, e := sess.AcceptStream(ctx)
-		if e != nil {
-			return
-		}
-		p := &peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
-		defer hub.remove(p)
-		go func() {
-			defer sess.CloseWithError(0, "closed")
-			for {
-				select {
-				case <-p.stop:
-					return
-				case <-sess.Context().Done():
-					return
-				case data := <-p.send:
-					stream.SetWriteDeadline(time.Now().Add(15 * time.Second))
-					if _, e := stream.Write(data); e != nil {
-						return
-					}
-				}
-			}
-		}()
-		scanner := bufio.NewScanner(stream)
-		scanner.Buffer(make([]byte, 2048), 32768)
-		for {
-			stream.SetReadDeadline(time.Now().Add(90 * time.Second))
-			if !scanner.Scan() {
-				return
-			}
-			var c command
-			if json.Unmarshal(scanner.Bytes(), &c) != nil {
-				return
-			}
-			if !hub.handle(p, c) {
-				return
-			}
-		}
-	})
+	hub.sourceRate = *sourceRate
+	gate := newIngress(*maxSessions)
+	gate.configure(wt)
+	mux.HandleFunc("/connect", gate.connect(wt, hub, local))
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"pin": pin, "boot": hub.start.UTC().Format(time.RFC3339Nano)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"pin": pin, "boot": hub.start.UTC().Format(time.RFC3339Nano)})
 	})
-	static, _ := fs.Sub(assets, "web/build")
-	mux.Handle("/", http.FileServerFS(static))
-	server := &http.Server{Addr: *addr, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if local {
-			host, _, _ := net.SplitHostPort(r.Host)
-			if host != "localhost" && !net.ParseIP(host).IsLoopback() {
-				http.Error(w, "loopback host required", 403)
-				return
-			}
-		}
-		mux.ServeHTTP(w, r)
-	}), TLSConfig: conf, ReadHeaderTimeout: 5 * time.Second}
-	go func() { log.Fatal(wt.ListenAndServe()) }()
-	if local {
-		log.Printf("PulseC http://%s (local certificate valid for 13 days)", *addr)
-		log.Fatal(server.ListenAndServe())
+	static, err := fs.Sub(assets, "web/build")
+	if err != nil {
+		logger.Fatal(err)
 	}
-	log.Printf("PulseC HTTPS + HTTP/3 on %s", *addr)
-	log.Fatal(server.ListenAndServeTLS("", ""))
+	mux.Handle("/", http.FileServerFS(static))
+	server := &http.Server{Handler: browserHeaders(local, mux), TLSConfig: conf, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	listener = netutil.LimitListener(listener, *maxSessions)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go hub.maintain(ctx, gate, *statsInterval, logger)
+	result := make(chan error, 2)
+	go func() { result <- wt.ListenAndServe() }()
+	go func() {
+		if local {
+			logger.Printf("PulseC http://%s (local certificate valid for 13 days)", *addr)
+			result <- server.Serve(listener)
+			return
+		}
+		logger.Printf("PulseC HTTPS + HTTP/3 on %s", *addr)
+		result <- server.ServeTLS(listener, "", "")
+	}()
+	select {
+	case err = <-result:
+		logger.Fatal(err)
+	case <-ctx.Done():
+		_ = server.Close()
+		_ = wt.Close()
+	}
+}
+
+func (h *hub) maintain(ctx context.Context, g *ingress, interval time.Duration, logger *log.Logger) {
+	sweep := time.NewTicker(time.Minute)
+	defer sweep.Stop()
+	var stats <-chan time.Time
+	if interval > 0 {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		stats = t.C
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-sweep.C:
+			h.sweep(now)
+		case <-stats:
+			h.Lock()
+			online, rooms, limited := len(h.peers), len(h.rooms), h.limited
+			h.Unlock()
+			logger.Printf("stats sessions=%d online=%d rooms=%d admission_denied=%d protocol_failures=%d limited=%d slow_disconnects=%d", len(g.slots), online, rooms, g.denied.Load(), g.failures.Load(), limited, g.slow.Load())
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,23 +20,27 @@ type command struct {
 }
 type event map[string]any
 type peer struct {
-	nick, trip  string
-	memberID    uint64
-	rosterDelta bool
-	rooms       map[string]bool
-	send        chan []byte
-	stop        chan struct{}
-	stopped     bool
-	second      int64
-	requests    int
-	active      int64
+	source        netip.Addr
+	controlBudget timeBudget
+	nick, trip    string
+	memberID      uint64
+	rosterDelta   bool
+	rooms         map[string]bool
+	send          chan []byte
+	stop          chan struct{}
+	stopped       bool
+	overflow      bool
+	second        int64
+	requests      int
+	active        int64
 }
 type channel struct {
-	members map[*peer]bool
-	public  bool
-	topic   string
-	bins    [30]int
-	minute  int64
+	topicChanged time.Time
+	members      map[*peer]bool
+	public       bool
+	topic        string
+	bins         [30]int
+	minute       int64
 }
 type receipt struct {
 	when time.Time
@@ -46,6 +51,8 @@ type limit struct {
 	until time.Time
 }
 type hub struct {
+	sourceRate int
+	sources    map[netip.Addr]*timeBudget
 	sync.Mutex
 	rooms        map[string]*channel
 	receipts     map[string]receipt
@@ -53,28 +60,54 @@ type hub struct {
 	start        time.Time
 	peers        map[*peer]bool
 	nextMemberID uint64
+	limited      uint64
 }
 
 func newHub() *hub {
-	h := &hub{rooms: map[string]*channel{}, receipts: map[string]receipt{}, limits: map[string]*limit{}, start: time.Now(), peers: map[*peer]bool{}}
-	go func() {
-		for now := range time.Tick(time.Minute) {
-			h.Lock()
-			for k, v := range h.receipts {
-				if now.Sub(v.when) > 5*time.Minute {
-					delete(h.receipts, k)
-				}
-			}
-			for k, v := range h.limits {
-				if len(v.sent) == 0 || now.Sub(v.sent[len(v.sent)-1]) > time.Minute {
-					delete(h.limits, k)
-				}
-			}
-			h.Unlock()
-		}
-	}()
-	return h
+	return &hub{sourceRate: 128, sources: map[netip.Addr]*timeBudget{}, rooms: map[string]*channel{}, receipts: map[string]receipt{}, limits: map[string]*limit{}, start: time.Now(), peers: map[*peer]bool{}}
 }
+
+// Sweep expired metadata; the process owns the ticker (tests need no background worker).
+func (h *hub) sweep(now time.Time) {
+	h.Lock()
+	defer h.Unlock()
+	for addr, b := range h.sources {
+		if now.Sub(b.next) > time.Minute {
+			delete(h.sources, addr)
+		}
+	}
+	for k, v := range h.receipts {
+		if now.Sub(v.when) > 5*time.Minute {
+			delete(h.receipts, k)
+		}
+	}
+	for k, v := range h.limits {
+		if len(v.sent) == 0 || now.Sub(v.sent[len(v.sent)-1]) > time.Minute {
+			delete(h.limits, k)
+		}
+	}
+}
+
+const (
+	maxRooms    = 1024
+	maxReceipts = 65536
+)
+
+// Track a burst without storing a timestamp per request.
+type timeBudget struct{ next time.Time }
+
+func (b *timeBudget) take(now time.Time, interval time.Duration, burst int) bool {
+	floor := now.Add(-time.Duration(burst-1) * interval)
+	if b.next.Before(floor) {
+		b.next = floor
+	}
+	if b.next.After(now) {
+		return false
+	}
+	b.next = b.next.Add(interval)
+	return true
+}
+
 func (p *peer) close() {
 	if !p.stopped {
 		close(p.stop)
@@ -92,6 +125,7 @@ func (p *peer) queue(b []byte) {
 	select {
 	case p.send <- b:
 	default:
+		p.overflow = true
 		p.close()
 	}
 }
@@ -168,8 +202,8 @@ func (h *hub) leave(p *peer, name string) {
 	}
 }
 
-var nickOK = regexp.MustCompile("^[\\pL\\pN_-]{1,16}$")
-var roomOK = regexp.MustCompile("^[\\pL\\pN_-]{1,24}$")
+var nickOK = regexp.MustCompile(`^[\pL\pN_-]{1,16}$`)
+var roomOK = regexp.MustCompile(`^[\pL\pN_-]{1,24}$`)
 var proofOK = regexp.MustCompile("^[a-f0-9]{64}$")
 var idOK = regexp.MustCompile("^[a-f0-9-]{36}$")
 
@@ -188,9 +222,21 @@ func (h *hub) handle(p *peer, c command) bool {
 	fail := func(code, msg string) {
 		p.emit(event{"op": "error", "id": c.ID, "room": c.Room, "text": msg, "code": code, "request": c.Op})
 	}
+	switch c.Op {
+	case "directory", "join", "leave", "nick", "ping":
+		if !p.controlBudget.take(now, 500*time.Millisecond, 24) {
+			h.limited++
+			fail("control_limited", "请求过于频繁，请稍后再试")
+			return true
+		}
+	}
 	r := h.rooms[c.Room]
 	switch c.Op {
 	case "directory":
+		if len(c.Known) > 50 {
+			fail("too_many_known", "最多查询 50 个已知频道")
+			break
+		}
 		known := map[string]bool{}
 		for _, s := range c.Known {
 			known[s] = true
@@ -209,9 +255,13 @@ func (h *hub) handle(p *peer, c command) bool {
 			return a > b
 		})
 		rows := []event{}
+		publicRows := 0
 		for _, n := range names {
 			r := h.rooms[n]
-			if len(rows) >= 50 && !known[n] {
+			if r.public {
+				publicRows++
+			}
+			if publicRows > 50 && !known[n] {
 				continue
 			}
 			r.advance(now.Unix())
@@ -244,6 +294,10 @@ func (h *hub) handle(p *peer, c command) bool {
 			break
 		}
 		if r == nil {
+			if len(h.rooms) >= maxRooms {
+				fail("server_busy", "频道数量已达上限")
+				break
+			}
 			r = &channel{members: map[*peer]bool{}, public: c.Public || c.Room == "lobby"}
 			h.rooms[c.Room] = r
 		}
@@ -299,17 +353,41 @@ func (h *hub) handle(p *peer, c command) bool {
 		l := h.limits[p.trip]
 		if l == nil {
 			l = &limit{}
-			h.limits[p.trip] = l
 		}
 		for len(l.sent) > 0 && now.Sub(l.sent[0]) >= 10*time.Second {
 			l.sent = l.sent[1:]
 		}
 		if now.Before(l.until) || len(l.sent) >= 6 {
 			if !now.Before(l.until) {
-				l.until = now.Add(4 * time.Second)
+				l.until = l.sent[0].Add(10 * time.Second)
+				if floor := now.Add(4 * time.Second); l.until.Before(floor) {
+					l.until = floor
+				}
 			}
+			h.limited++
 			p.emit(event{"op": "limited", "id": c.ID, "wait": max(time.Until(l.until).Milliseconds(), 1)})
 			break
+		}
+		if len(h.receipts) >= maxReceipts {
+			fail("server_busy", "中继暂时繁忙，请稍后再试")
+			break
+		}
+		// The sender address comes only from QUIC. Never trust forwarding headers.
+		if p.source.IsValid() {
+			b := h.sources[p.source]
+			if b == nil {
+				if len(h.sources) >= maxReceipts {
+					fail("server_busy", "中继暂时繁忙，请稍后再试")
+					break
+				}
+				b = &timeBudget{}
+				h.sources[p.source] = b
+			}
+			if !b.take(now, time.Second/time.Duration(h.sourceRate), 2*h.sourceRate) {
+				h.limited++
+				p.emit(event{"op": "limited", "id": c.ID, "wait": max(b.next.Sub(now).Milliseconds(), 1)})
+				break
+			}
 		}
 		sum := sha256.Sum256([]byte(key))
 		ref := hex.EncodeToString(sum[:6])
@@ -324,6 +402,12 @@ func (h *hub) handle(p *peer, c command) bool {
 				fail("topic_too_long", "主题最长 120 字")
 				return true
 			}
+			if now.Sub(r.topicChanged) < 10*time.Second {
+				h.limited++
+				fail("control_limited", "主题修改过于频繁，请稍后再试")
+				return true
+			}
+			r.topicChanged = now
 			r.topic = c.Text
 			r.broadcast(r.state(c.Room))
 		case "whisper":
@@ -351,6 +435,7 @@ func (h *hub) handle(p *peer, c command) bool {
 			return true
 		}
 		h.receipts[key] = receipt{now, ref}
+		h.limits[p.trip] = l
 		l.sent = append(l.sent, now)
 		p.active = now.Unix()
 		p.emit(event{"op": "ack", "id": c.ID, "ref": ref})

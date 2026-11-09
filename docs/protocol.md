@@ -18,3 +18,5 @@
 error 由 code 分类；id、room、request 标识请求，text 供旧客户端和未知码回退。当前输入错误包括 identity_required、invalid_room、room_limit、invalid_nick、not_joined、invalid_id、invalid_text、topic_too_long、ambiguous_recipient、recipient_offline、unknown_kind、unknown_op。limited 是独立事件，包含原 id 和等待毫秒数 wait；客户端在此期间保留待发消息。无效握手、超长或损坏的帧、中断的流可能直接断开，不保证先发 error。
 
 [机器可读样例](../testdata/protocol.json)中的 event 是必须匹配的字段子集；Go 测试重放对应命令以防文案变化影响错误分类。
+
+公网限额：握手、CONNECT 各有独立的全实例速率预算；容量不足时 CONNECT 可能被拒绝（HTTP 503），客户端按退避重连。每连接最多加入 9 个房间；每次 directory 最多查询 50 个已知名字，超过返回 too_many_known。目录、加入/离开、改名及 ping 共用每连接每秒 2 次、突发 24 次的控制命令预算；同房主题至少间隔 10 秒，过快返回 control_limited。会话总量、房间总量和短期回执都有硬上限，容量不足的新建房间和新消息返回 server_busy；重试同一已确认 id 仍可得到原回执。转发前合算同 trip 与同来源地址的发送预算，受限的发送返回 limited 和等待时间。来源仅取 QUIC 连接实际地址，计数在内存中过期，不作身份或日志标签。
