@@ -45,7 +45,7 @@ make build
 
 `make test` 构建前端并运行前端单测和 Go 竞态测试。完整检查和依赖扫描见[贡献指南](CONTRIBUTING.md)及[安全报告](docs/security-review.md)。
 
-发行内容见[变更记录](CHANGELOG.md)。
+发行内容见[变更记录](CHANGELOG.md)，候选的适用范围和实测结果见[发布验收报告](docs/release-rc1.md)。
 
 ## 频道与身份
 
