@@ -1,0 +1,6 @@
+/dist/
+/pulsec
+/web/node_modules/
+/web/.svelte-kit/
+/web/build/
+*bench

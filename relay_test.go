@@ -1,0 +1,150 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+)
+
+func events(t *testing.T, p *peer) []event {
+	t.Helper()
+	var list []event
+	for len(p.send) > 0 {
+		var e event
+		if err := json.Unmarshal(<-p.send, &e); err != nil {
+			t.Fatal(err)
+		}
+		list = append(list, e)
+	}
+	return list
+}
+
+func TestRelayDelivery(t *testing.T) {
+	h := newHub()
+	join := func(n, cred string) *peer {
+		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 64), stop: make(chan struct{})}
+		h.handle(p, command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
+		h.handle(p, command{Op: "join", Room: "room"})
+		return p
+	}
+	a := join("A", "a")
+	b := join("B", "b")
+	send := command{Op: "send", Kind: "chat", Room: "room", Text: "first", ID: fmt.Sprintf("%036d", 0)}
+	h.handle(a, send)
+	c := join("B", "c")
+	for _, e := range events(t, c) {
+		if e["op"] == "message" {
+			t.Fatal("late join replayed chat")
+		}
+	}
+	events(t, b)
+	events(t, a)
+	h.handle(a, send)
+	if len(events(t, b)) != 0 || events(t, a)[0]["op"] != "ack" {
+		t.Fatal("retry was not idempotent")
+	}
+	send.ID = fmt.Sprintf("%036d", 1)
+	send.Kind = "whisper"
+	send.To = "B"
+	h.handle(a, send)
+	if events(t, a)[0]["op"] != "error" {
+		t.Fatal("ambiguous whisper")
+	}
+	send.To = "B#" + b.trip
+	h.handle(a, send)
+	if len(events(t, c)) != 0 || events(t, b)[0]["kind"] != "whisper" {
+		t.Fatal("whisper recipients")
+	}
+	send.Kind = "chat"
+	for i := 2; i < 6; i++ {
+		send.ID = fmt.Sprintf("%036d", i)
+		h.handle(a, send)
+	}
+	h.remove(a)
+	a = join("A", "a")
+	events(t, a)
+	send.ID = fmt.Sprintf("%036d", 6)
+	h.handle(a, send)
+	if events(t, a)[0]["op"] != "limited" {
+		t.Fatal("reconnect reset limiter")
+	}
+	h.handle(c, command{Op: "directory"})
+	var rows []any
+	for _, e := range events(t, c) {
+		if e["op"] == "directory" {
+			rows = e["rooms"].([]any)
+		}
+	}
+	if len(rows) != 0 {
+		t.Fatal("unlisted channel leaked")
+	}
+	h.remove(a)
+	h.remove(b)
+	h.remove(c)
+	if len(h.rooms) != 0 || len(h.peers) != 0 {
+		t.Fatal("empty room retained")
+	}
+}
+func TestActivityWindow(t *testing.T) {
+	r := channel{minute: 100}
+	r.bins[29] = 3
+	r.advance(101 * 60)
+	if r.bins[28] != 3 || r.bins[29] != 0 {
+		t.Fatal("wrong minute")
+	}
+	r.advance(time.Now().Unix())
+	if r.bins != [30]int{} {
+		t.Fatal("stale count")
+	}
+}
+
+// Two browser tabs can legitimately share the same trip and nickname. Roster
+// changes must identify the connection, including when older clients share a room.
+func TestRosterAcrossProtocolVersions(t *testing.T) {
+	h := newHub()
+	join := func(delta bool) *peer {
+		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 16), stop: make(chan struct{})}
+		h.handle(p, command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
+		h.handle(p, command{Op: "join", Room: "room"})
+		return p
+	}
+	legacy := join(false)
+	first := join(true)
+	second := join(true)
+	e := events(t, second)
+	snapshot := e[len(e)-1]
+	if snapshot["op"] != "state" || len(snapshot["users"].([]any)) != 3 {
+		t.Fatal("new subscriber needs full roster", snapshot)
+	}
+	e = events(t, first)
+	last := e[len(e)-1]
+	if last["op"] != "member" || last["action"] != "join" {
+		t.Fatal("expected incremental join", last)
+	}
+	target := last["user"].(map[string]any)["id"]
+	if target != float64(second.memberID) || first.memberID == second.memberID {
+		t.Fatal("identical identities need distinct roster entries")
+	}
+	h.handle(second, command{Op: "nick", Nick: "new"})
+	e = events(t, first)
+	if len(e) != 1 || e[0]["action"] != "nick" || e[0]["user"].(map[string]any)["id"] != target || e[0]["user"].(map[string]any)["nick"] != "new" {
+		t.Fatal("rename", e)
+	}
+	h.remove(second)
+	e = events(t, first)
+	if len(e) != 1 || e[0]["action"] != "leave" || e[0]["user"].(map[string]any)["id"] != target {
+		t.Fatal("leave", e)
+	}
+	e = events(t, legacy)
+	for _, v := range e {
+		if v["op"] == "member" {
+			t.Fatal("legacy client received delta")
+		}
+	}
+	snapshot = e[len(e)-1]
+	if snapshot["op"] != "state" || len(snapshot["users"].([]any)) != 2 {
+		t.Fatal("legacy client did not receive up-to-date snapshot", snapshot)
+	}
+}
