@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyMember, deliveryUnknown, forgetChatData } from "../src/lib/session.js";
+import {
+  applyMember,
+  deliveryUnknown,
+  forgetChatData,
+} from "../src/lib/session.js";
 
 test("roster changes distinguish tabs sharing an identity", () => {
   const a = { id: 1, nick: "same", trip: "t" };
   const b = { ...a, id: 2 };
-  assert.deepEqual(applyMember([a, b], "nick", { ...b, nick: "new" }), [a, { ...b, nick: "new" }]);
+  assert.deepEqual(applyMember([a, b], "nick", { ...b, nick: "new" }), [
+    a,
+    { ...b, nick: "new" },
+  ]);
   assert.deepEqual(applyMember([a, b], "leave", a), [b]);
   assert.deepEqual(applyMember([a], "join", a), [a]);
 });
@@ -20,7 +27,14 @@ test("retry within the same relay's two-minute window", () => {
 
 test("forget removes only this application's chat data", () => {
   function store(keys) {
-    return Object.assign({ removeItem(k) { delete this[k]; } }, Object.fromEntries(keys.map(k => [k, "x"])));
+    return Object.assign(
+      {
+        removeItem(k) {
+          delete this[k];
+        },
+      },
+      Object.fromEntries(keys.map((k) => [k, "x"])),
+    );
   }
   const tab = store(["pulsec.session", "pulsec.row.lobby.4", "unrelated"]);
   const local = store(["pulsec.channels", "pulsec.language", "unrelated"]);

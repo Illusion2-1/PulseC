@@ -1,13 +1,22 @@
 <script>
   import { onMount, tick } from "svelte";
   import { readRows, appendRow, clearRows } from "$lib/history.js";
-  import { forgetChatData, readSaved, applyMember, deliveryUnknown, tripPattern } from "$lib/session.js";
+  import {
+    forgetChatData,
+    readSaved,
+    applyMember,
+    deliveryUnknown,
+    tripPattern,
+  } from "$lib/session.js";
+  import { t, clock, loadLanguage } from "$lib/locale.js";
+  import { displayEvent } from "$lib/messages.js";
+  import LanguagePicker from "$lib/LanguagePicker.svelte";
   import Body from "$lib/Body.svelte";
   import { connect } from "$lib/link.js";
   import "$lib/style.css";
 
   let link,
-    status = "正在连接",
+    status = "connecting",
     now = Date.now(),
     directory = [],
     total = 0,
@@ -16,7 +25,7 @@
     password = "",
     channel = "",
     publish = false,
-    error = "",
+    error = null,
     identity = null,
     current = "",
     known = [],
@@ -71,8 +80,6 @@
   const color = (t) => "t" + (parseInt(t.slice(0, 2), 16) % 8);
   const spark = (a) =>
     a.map((x) => "▁▂▃▄▅▆▇█"[Math.round((x / Math.max(1, ...a)) * 7)]).join("");
-  const clock = (t) =>
-    new Date(t).toLocaleTimeString("zh-CN", { hour12: false });
   async function credential(password) {
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey(
@@ -111,7 +118,9 @@
   }
   $: previewTrip(password);
   $: state = states[current] || blank;
-  $: items = (logs[current] || []).filter((m) => !m.trip || !ignored.includes(m.trip));
+  $: items = (logs[current] || []).filter(
+    (m) => !m.trip || !ignored.includes(m.trip),
+  );
   $: left = Math.max(0, 6 - sent.filter((t) => now - t < 10000).length);
   $: suggestions = dismissed
     ? []
@@ -123,11 +132,11 @@
             .map((u) => "@" + u.nick + "#" + u.trip)
         : [];
   function forget() {
-    if (!window.confirm("清除本标签页的身份、记录、忽略列表、待发消息和本机已知频道？此操作无法撤销。")) return;
+    if (!window.confirm($t("forgetConfirm"))) return;
     try {
       forgetChatData(sessionStorage, localStorage);
     } catch {
-      notice("浏览器未允许完整清除本地数据，请在浏览器设置中清理。");
+      notice("forgetFailed");
       return;
     }
     link?.close();
@@ -140,7 +149,7 @@
         JSON.stringify({ identity, current, rooms, queue, ignored }),
       );
     } catch {
-      cacheError = "会话存储不可用；刷新可能丢失本地状态";
+      cacheError = "cacheUnavailable";
     }
   }
   function remember(name) {
@@ -155,7 +164,7 @@
         logs[name] = readRows(name);
       } catch {
         logs[name] = [];
-        cacheError = "会话存储不可用";
+        cacheError = "cacheUnavailable";
       }
     }
   }
@@ -164,7 +173,12 @@
   }
   function authorize() {
     if (!identity) return;
-    link.send({ op: "identity", rosterDelta: true, nick: identity.nick, proof: identity.proof });
+    link.send({
+      op: "identity",
+      rosterDelta: true,
+      nick: identity.nick,
+      proof: identity.proof,
+    });
     for (const [room, pub] of Object.entries(rooms))
       link.send({ op: "join", room, public: pub });
   }
@@ -173,19 +187,22 @@
     else link.send({ op: "ping", id: String(Date.now()) });
   }
   onMount(() => {
+    loadLanguage();
     const saved = readSaved(sessionStorage, "pulsec.session", {});
     identity = saved.identity;
     current = saved.current || "";
     rooms = Object.assign(Object.create(null), saved.rooms);
     queue = saved.queue || [];
-    ignored = Array.isArray(saved.ignored) ? saved.ignored.filter((trip) => tripPattern.test(trip)) : [];
+    ignored = Array.isArray(saved.ignored)
+      ? saved.ignored.filter((trip) => tripPattern.test(trip))
+      : [];
     known = readSaved(localStorage, "pulsec.channels", []);
     for (const name of Object.keys(rooms)) restore(name);
     channel = new URLSearchParams(location.search).get("ch") || "";
     link = connect({
       status: (s) => {
         status = s;
-        if (s !== "已连接") {
+        if (s !== "connected") {
           joined = new Set();
           inflight = "";
           rtt = null;
@@ -220,14 +237,19 @@
       prev?.kind === "presence" &&
       m.time - prev.time < 10000 &&
       prev.text.length < 256;
-    if (merge) m = { ...m, text: prev.text + "   " + m.text };
+    if (merge)
+      m = {
+        ...m,
+        text: prev.text + "   " + m.text,
+        parts: [...(prev.parts || [{ text: prev.text }]), ...m.parts],
+      };
     logs[name] = merge
       ? [...logs[name].slice(0, -1), m]
       : [...logs[name].slice(-499), m];
     try {
       appendRow(name, m, merge);
     } catch {
-      cacheError = "会话存储不可用；刷新可能丢失消息";
+      cacheError = "cacheUnavailable";
     }
     if (name !== current) {
       if (!merge) unread[name] = (unread[name] || 0) + 1;
@@ -239,9 +261,35 @@
     } else if (stick) bottom();
     else below++;
   }
-  function notice(text, room = current) {
-    if (room) add(room, { kind: "sys", text, time: Date.now() });
-    else error = text;
+  function notice(code, room = current, details = {}) {
+    const event = {
+      kind: "sys",
+      code,
+      text: $t(code, details.params, details.text),
+      time: Date.now(),
+      ...details,
+    };
+    if (room) add(room, event);
+    else error = event;
+  }
+
+  function presence(e) {
+    if (!e.text || !Object.hasOwn(rooms, e.room)) return;
+    const code = { join: "memberJoin", leave: "memberLeave" }[e.action];
+    const part =
+      code && e.user
+        ? {
+            code,
+            params: { name: e.user.nick + "#" + e.user.trip },
+            text: e.text,
+          }
+        : { text: e.text };
+    add(e.room, {
+      kind: "presence",
+      text: e.text,
+      parts: [part],
+      time: Date.now(),
+    });
   }
   function bottom() {
     below = 0;
@@ -284,13 +332,12 @@
         const state = states[e.room];
         if (!state) break;
         const users = applyMember(state.users, e.action, e.user);
-        states[e.room] = {...state, users};
-        if (e.text) add(e.room, {kind: "presence", text: e.text, time: Date.now()});
+        states[e.room] = { ...state, users };
+        presence(e);
         break;
       }
       case "notice":
-        if (Object.hasOwn(rooms, e.room))
-          add(e.room, { kind: "presence", text: e.text, time: Date.now() });
+        presence(e);
         break;
       case "message":
         if (Object.hasOwn(rooms, e.room) && !ignored.includes(e.trip)) {
@@ -340,24 +387,27 @@
         if (m) {
           queue = queue.filter((q) => q.id !== e.id);
           inflight = "";
-          notice(e.text + " · 未发送：" + m.raw, m.room);
+          notice(e.code, m.room, {
+            text: e.text || $t("rejected"),
+            unsent: m.raw,
+          });
           if (!draft && current === m.room) draft = m.raw;
           save();
-        } else notice(e.text);
+        } else notice(e.code, current, { text: e.text || $t("rejected") });
         break;
       }
     }
   }
   async function enter() {
-    error = "";
+    error = null;
     const n = nick.trim() || "anon",
       name = channel.trim() || "lobby";
     if (!nicks.test(n) || !names.test(name)) {
-      error = "昵称限 16 字，频道限 24 字；可用字母、数字、下划线和连字符";
+      error = { code: "invalidEntry" };
       return;
     }
-    if (status !== "已连接") {
-      error = status;
+    if (status !== "connected") {
+      error = { code: status };
       return;
     }
     if (entering) return;
@@ -366,8 +416,8 @@
       ? await credential(password)
       : hex(crypto.getRandomValues(new Uint8Array(32)));
     entering = false;
-    if (status !== "已连接") {
-      error = status;
+    if (status !== "connected") {
+      error = { code: status };
       return;
     }
     password = "";
@@ -389,10 +439,9 @@
     tick().then(() => area?.focus());
   }
   function join(name, pub = false) {
-    if (!names.test(name)) return notice("频道名无效");
+    if (!names.test(name)) return notice("invalid_room");
     if (!Object.hasOwn(rooms, name)) {
-      if (Object.keys(rooms).length >= 9)
-        return notice("最多同时加入 9 个频道");
+      if (Object.keys(rooms).length >= 9) return notice("room_limit");
       rooms[name] = pub;
       restore(name);
       remember(name);
@@ -403,7 +452,7 @@
   function leave(all = false) {
     const leaving = all ? Object.keys(rooms) : [current];
     if (queue.some((q) => leaving.includes(q.room)))
-      return notice("仍有待发消息，请等待发送完成或用 /cancel 取消待发");
+      return notice("leavePending");
     for (const name of leaving) {
       link.send({ op: "leave", room: name });
       joined.delete(name);
@@ -432,7 +481,7 @@
       return;
     if (deliveryUnknown(m, bootID, Date.now())) {
       queue = queue.slice(1);
-      notice("无法确认是否送达，请核对后手动重发：" + m.raw, m.room);
+      notice("uncertain", m.room, { params: { raw: m.raw } });
       save();
       return;
     }
@@ -449,7 +498,7 @@
   function send() {
     const raw = draft.trimEnd();
     if (!raw.trim()) return;
-    if ([...raw].length > 2000) return notice("消息最长 2000 字");
+    if ([...raw].length > 2000) return notice("invalid_text");
     let kind = "chat",
       text = raw,
       to = "";
@@ -464,23 +513,24 @@
         case "/cancel":
           queue = queue.filter((q) => q.room !== current || q.id === inflight);
           save();
-          return notice("已取消尚未发出的消息");
+          return notice("canceled");
         case "/nick":
-          if (!nicks.test(arg) || status !== "已连接")
-            return notice("请连接后指定有效昵称");
+          if (!nicks.test(arg) || status !== "connected")
+            return notice("connectedNick");
           return link.send({ op: "nick", nick: arg });
         case "/ignore":
         case "/unignore": {
           const trip = arg.split("#").at(-1);
           if (!tripPattern.test(trip) || trip === identity.trip)
-            return notice("请输入对方的 16 位完整 trip");
+            return notice("needTrip");
           if (cmd === "/ignore") {
-            if (ignored.length >= 100 && !ignored.includes(trip)) return notice("忽略列表已满");
+            if (ignored.length >= 100 && !ignored.includes(trip))
+              return notice("muteFull");
             ignored = [...new Set([...ignored, trip])];
-            notice("已忽略该 trip 的消息");
+            notice("muted");
           } else {
             ignored = ignored.filter((id) => id !== trip);
-            notice("已取消忽略");
+            notice("unmuted");
           }
           save();
           return;
@@ -488,22 +538,20 @@
         case "/forget":
           return forget();
         case "/users":
-          return notice(
-            state.users.map((u) => u.nick + "#" + u.trip).join("  "),
-          );
+          return notice(undefined, current, {
+            text: state.users.map((u) => u.nick + "#" + u.trip).join("  "),
+          });
         case "/clear":
           logs[current] = [];
           clearRows(current);
           return;
         case "/help":
-          return notice(
-            "/join 频道 · /leave · /nick 新名 · /topic 主题\n/me 动作 · /w 昵称#trip 消息 · /users · /clear · /cancel\n/ignore 完整trip · /unignore 完整trip · /forget 清除本地数据\n以 // 发送开头的斜杠。点击时间引用，点击昵称提及。",
-          );
+          return notice("help");
         case "/w": {
           const match = arg.match(/^(\S+)\s+([\s\S]+)/);
           if (!match) {
             draft = raw;
-            return notice("用法：/w 昵称#trip 消息");
+            return notice("whisperUsage");
           }
           [, to, text] = match;
           kind = "whisper";
@@ -513,21 +561,21 @@
         case "/topic":
           kind = cmd.slice(1);
           text = arg;
-          if (!text) return notice("请输入内容");
+          if (!text) return notice("needText");
           break;
         default:
           draft = raw;
-          return notice("未知命令，/help 查看帮助");
+          return notice("unknownCommand");
       }
     } else text = raw.replace(/^\/\//, "/");
     if (queue.length >= 32 || Date.now() < until) {
       draft = raw;
-      return notice("待发队列已满或正在限速，请稍后发送");
+      return notice("queueFull");
     }
-    if (left === 0 && status === "已连接") {
+    if (left === 0 && status === "connected") {
       draft = raw;
       until = Date.now() + 4000;
-      return notice("限速 · 已保留输入内容");
+      return notice("retained");
     }
     lastInput = raw;
     draft = "";
@@ -601,7 +649,7 @@
   }
   function jump(ref) {
     const el = document.getElementById("m-" + ref);
-    if (!el) return notice("这条消息不在本地记录中");
+    if (!el) return notice("missingRef");
     el.scrollIntoView({ block: "center" });
     el.animate([{ background: "#453710" }, { background: "transparent" }], 900);
   }
@@ -620,7 +668,8 @@
 </script>
 
 <svelte:head
-  ><title>{current ? "#" + current + " · PulseC" : "PulseC · 接入"}</title
+  ><title
+    >{current ? "#" + current + " · PulseC" : "PulseC · " + $t("join")}</title
   ></svelte:head
 >
 <svelte:window on:keydown={hotkey} />
@@ -628,26 +677,34 @@
   <header class="bar head">
     <span class="amb">PulseC</span><span class="grow"
       >WebTransport / HTTP·3</span
-    ><span>{status}</span><time>{clock(now)}</time>
+    ><LanguagePicker /><span role="status">{$t(status)}</span><time
+      >{$clock(now)}</time
+    >
   </header>
   <main class="gate">
-    <p class="intro"><span class="mark">PulseC</span> 是一个匿名聊天中继。</p>
+    <p class="intro"><span class="mark">PulseC</span> {$t("intro")}</p>
     <p>
-      无需注册。昵称可以重名，认人请看 trip。已收到的消息只保存在当前标签页。
+      {$t("privacy")}
     </p>
     <p class="dim">
-      运行 {Math.floor(uptime / 60)} 分钟 · 在线 {foundDirectory ? total : "—"} 人
+      {$t("stats", {
+        minutes: Math.floor(uptime / 60),
+        online: foundDirectory ? total : "—",
+      })}
     </p>
-    <h2>热门公共频道</h2>
+    {#if status === "reconnecting"}<p role="status" class="net-hint">
+        {$t("offlineHint")}
+      </p>{/if}
+    <h2>{$t("publicRooms")}</h2>
     <table class="chan">
       <colgroup
         ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
         /></colgroup
       ><thead
         ><tr
-          ><th>频道</th><th>在线</th><th class="hide-s">脉冲 / 30 min</th><th
-            >主题</th
-          ></tr
+          ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
+            >{$t("pulse")}</th
+          ><th>{$t("topic")}</th></tr
         ></thead
       ><tbody>
         {#each directory.filter((r) => r.public) as r}<tr
@@ -658,23 +715,21 @@
             ><td class="topic">{r.topic || "—"}</td></tr
           >{:else}<tr
             ><td colspan="4" class="mid"
-              >{foundDirectory
-                ? "暂无在线公共频道，可直接进入 #lobby。"
-                : status}</td
+              >{foundDirectory ? $t("noPublic") : $t(status)}</td
             ></tr
           >{/each}</tbody
       >
     </table>
-    <h2>本机已知频道</h2>
+    <h2>{$t("knownRooms")}</h2>
     {#if known.length}<table class="chan">
         <colgroup
           ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
           /></colgroup
         ><thead
           ><tr
-            ><th>频道</th><th>在线</th><th class="hide-s">脉冲 / 30 min</th><th
-              >主题</th
-            ></tr
+            ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
+              >{$t("pulse")}</th
+            ><th>{$t("topic")}</th></tr
           ></thead
         ><tbody>
           {#each known as n}{@const r = directory.find((r) => r.name === n)}<tr
@@ -686,11 +741,11 @@
               ></tr
             >{/each}</tbody
         >
-      </table>{:else}<p>加入过的频道会出现在这里。</p>{/if}
-    <h2>接入</h2>
+      </table>{:else}<p>{$t("noKnown")}</p>{/if}
+    <h2>{$t("join")}</h2>
     <form on:submit|preventDefault={enter} autocomplete="off">
       <div class="field">
-        <label for="nick">nick</label><input
+        <label for="nick">{$t("nick")}</label><input
           id="nick"
           bind:value={nick}
           maxlength="16"
@@ -698,16 +753,16 @@
         />
       </div>
       <div class="field">
-        <label for="pass">password</label><input
+        <label for="pass">{$t("password")}</label><input
           id="pass"
           type="password"
           bind:value={password}
           maxlength="256"
-          placeholder="可选，用于生成固定身份"
-        /><span class="hint">trip {preview || "— · 临时身份"}</span>
+          placeholder={$t("passwordHint")}
+        /><span class="hint">trip {preview || "— · " + $t("temporary")}</span>
       </div>
       <div class="field">
-        <label for="ch">channel</label><input
+        <label for="ch">{$t("channel")}</label><input
           id="ch"
           bind:value={channel}
           maxlength="24"
@@ -715,33 +770,35 @@
         />
       </div>
       <label class="settings"
-        ><input
-          type="checkbox"
-          bind:checked={publish}
-        />新建时列入公共目录（lobby 始终公开）</label
+        ><input type="checkbox" bind:checked={publish} />{$t("publish")}</label
       >
-      <div class="err" role="status">{error || cacheError}</div>
-      <button class="go" disabled={entering || status !== "已连接"}
-        >» 接入 #{channel.trim() || "lobby"} <kbd>⏎</kbd></button
+      <div class="err" role="status">
+        {error ? displayEvent($t, error) : $t(cacheError)}
+      </div>
+      <button class="go" disabled={entering || status !== "connected"}
+        >» {$t("join")} #{channel.trim() || "lobby"} <kbd>⏎</kbd></button
       >
     </form>
-    <button class="go" data-action="forget" on:click={forget}>清除本地聊天数据</button>
-    <h2>须知</h2>
+    <button class="forget" data-action="forget" on:click={forget}
+      >{$t("forget")}</button
+    >
+    <h2>{$t("about")}</h2>
     <p>
-      密码在本机派生身份凭据。同名不同 trip 以 <span class="red">≠</span> 标记。
+      {$t("identityInfo")}
     </p>
     <p>
-      每 10 秒最多 6 条消息。无人频道自动消失；本标签页每频道最多保留 500 行。
+      {$t("limitInfo")}
     </p>
   </main>
 {:else}
   <div class="app" class:show-users={showUsers}>
     <header class="bar head">
-      <button class="brand" on:click={() => leave(true)} title="离开并返回入口"
+      <button class="brand" on:click={() => leave(true)} title={$t("leave")}
         >PulseC</button
-      ><span class="grow">#{current} · {state.topic || "暂无主题"}</span><span
-        class="wide">WebTransport · TLS 1.3</span
-      ><time>{clock(now)}</time>
+      ><span class="grow">#{current} · {state.topic || $t("noTopic")}</span
+      ><span class="wide">WebTransport · TLS 1.3</span><LanguagePicker /><time
+        >{$clock(now)}</time
+      >
     </header>
     <nav class="tabs">
       {#each Object.keys(rooms) as n, i}<button
@@ -768,9 +825,11 @@
     >
       {#each items as m, i}
         {@const prev = items[i - 1]}
-        {#if m === firstUnread}<div class="div">{unreadCount} 条未读</div>{/if}
+        {#if m === firstUnread}<div class="div">
+            {$t("unread", { count: unreadCount })}
+          </div>{/if}
         {#if !prev || m.time - prev.time > 300000}<div class="div tick">
-            {clock(m.time)}
+            {$clock(m.time)}
           </div>{/if}
         <div
           id={m.ref ? "m-" + m.ref : undefined}
@@ -793,7 +852,8 @@
             class="tm"
             title={m.ref}
             on:click={() => m.ref && insert(">>" + m.ref + " ")}
-            ><span class="hm">{clock(m.time)}</span><span class="id">»引用</span
+            ><span class="hm">{$clock(m.time)}</span><span class="id"
+              >»{$t("quote")}</span
             ></button
           >
           <button
@@ -814,25 +874,33 @@
               ? "→ " + m.to + "："
               : m.kind === "me"
                 ? "* "
-                : ""}<Body text={m.text} {jump} /></span
+                : ""}<Body
+              text={m.kind === "sys" || m.kind === "presence"
+                ? displayEvent($t, m)
+                : m.text}
+              {jump}
+            /></span
           >
         </div>
-      {:else}<p class="empty">#{current} · 此标签页尚未收到消息。</p>{/each}
+      {:else}<p class="empty">#{current} · {$t("empty")}</p>{/each}
       {#each queue.filter((q) => q.room === current) as q}<div class="ln pend">
-          <span class="tm">…</span><span></span><span class="nk">待发</span
+          <span class="tm">…</span><span></span><span class="nk"
+            >{$t(q.id === inflight ? "sending" : "queued")}</span
           ><span class="tx">{q.raw}</span>
         </div>{/each}
       {#if below}<button class="below on" on:click={bottom}
-          >↓ {below} 条新消息</button
+          >↓ {$t(below === 1 ? "newMessage" : "newMessages", {
+            count: below,
+          })}</button
         >{/if}
     </div>
     <aside class="users">
-      <h3>在线 <span>{state.users.length}</span></h3>
+      <h3>{$t("online")} <span>{state.users.length}</span></h3>
       {#each [false, true] as idle}{@const group = state.users
           .filter((u) => now / 1000 - u.active >= 600 === idle)
           .sort((a, b) => a.nick.localeCompare(b.nick))}
         {#if group.length}<div class="grp">
-            {idle ? "空闲 ≥10m" : "活跃"}
+            {$t(idle ? "idle" : "active")}
             {group.length}
           </div>{/if}
         {#each group as u}<button
@@ -849,14 +917,20 @@
               class:clash={clash(u.nick, u.trip, state.users)}>{u.nick}</span
             ><span class="tr">{u.trip}</span></button
           >{/each}{/each}
-      <button class="utog" on:click={() => (showUsers = false)}>收起</button>
+      <button class="utog" on:click={() => (showUsers = false)}
+        >{$t("close")}</button
+      >
     </aside>
-    <div class="bar stat" class:off={status !== "已连接"}>
-      <span>{status}</span><button on:click={() => (showUsers = !showUsers)}
-        >{state.users.length} 人</button
-      ><span class="pulse" title="最近 16 分钟"
-        >{spark(state.pulse.slice(-16))}</span
-      ><span class="grow">{cacheError || "本地 " + items.length + "/500"}</span
+    <div class="bar stat" class:off={status !== "connected"}>
+      <span
+        role="status"
+        title={status === "reconnecting" ? $t("offlineHint") : undefined}
+        >{$t(status)}</span
+      ><button on:click={() => (showUsers = !showUsers)}
+        >{$t("members", { count: state.users.length })}</button
+      ><span class="pulse" title={$t("pulse")}>{spark(state.pulse)}</span><span
+        class="grow"
+        >{$t(cacheError) || $t("cacheCount", { count: items.length })}</span
       ><span>{rtt === null ? "—" : rtt + " ms"}</span>
     </div>
     <div class="input" class:throt={now < until}>
@@ -865,7 +939,7 @@
         <span class="amb">›</span></span
       >
       <textarea
-        aria-label="消息"
+        aria-label={$t("message")}
         rows="1"
         bind:this={area}
         bind:value={draft}
@@ -874,11 +948,11 @@
           selection = 0;
           dismissed = false;
         }}
-        placeholder="说点什么 · /help 看命令"></textarea>
+        placeholder={$t("draftHint")}></textarea>
       <span class="meta"
         ><span class="wide">{[...draft].length}/2000 </span><span class="meter"
           >{now < until
-            ? "锁定 " + Math.ceil((until - now) / 1000) + "s"
+            ? $t("cooldown", { seconds: Math.ceil((until - now) / 1000) })
             : "▮".repeat(left) + "▯".repeat(6 - left)}</span
         ></span
       >
@@ -891,12 +965,14 @@
     </div>
     <div class="bar keys">
       <span class="kb"
-        ><kbd>⏎</kbd>发送 <kbd>⇧⏎</kbd>换行 <kbd>Tab</kbd>补全
-        <kbd>↑</kbd>上一条 <kbd>Alt+1–9</kbd>切频道 <kbd>Esc</kbd>到底部</span
+        ><kbd>⏎</kbd>{$t("send")} <kbd>⇧⏎</kbd>{$t("newline")}
+        <kbd>Tab</kbd>{$t("complete")}
+        <kbd>↑</kbd>{$t("last")} <kbd>Alt+1–9</kbd>{$t("switch")}
+        <kbd>Esc</kbd>{$t("bottom")}</span
       >{#each ["/", "@", ">>", "```\n\n```", "/me ", "/w "] as s}<button
           class="tok"
           on:click={() => insert(s)}>{s.trim()}</button
-        >{/each}<button class="tok" on:click={send}>发送</button>
+        >{/each}<button class="tok" on:click={send}>{$t("send")}</button>
     </div>
   </div>
 {/if}

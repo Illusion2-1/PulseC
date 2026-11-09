@@ -18,7 +18,8 @@ export function readSaved(store, key, fallback) {
 }
 
 export function applyMember(users, action, user) {
-  if (action === "join") return [...users.filter((u) => u.id !== user.id), user];
+  if (action === "join")
+    return [...users.filter((u) => u.id !== user.id), user];
   if (action === "leave") return users.filter((u) => u.id !== user.id);
   if (action === "nick") return users.map((u) => (u.id === user.id ? user : u));
   return users;
@@ -26,7 +27,10 @@ export function applyMember(users, action, user) {
 
 // After a restart or expiry, retrying the same ID may duplicate a delivered message.
 export function deliveryUnknown(message, boot, now) {
-  return !!message.attempt && (now - message.attempt > 120000 || message.boot !== boot);
+  return (
+    !!message.attempt &&
+    (now - message.attempt > 120000 || message.boot !== boot)
+  );
 }
 
 export const tripPattern = /^[a-f0-9]{16}$/;

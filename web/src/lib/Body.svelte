@@ -1,13 +1,18 @@
 <script>
+  import { t } from "./locale.js";
   export let text;
   export let jump;
-  let copied = -1;
+  let copied = -1,
+    failed = -1;
   async function copy(code, i) {
     try {
       await navigator.clipboard.writeText(code);
+      failed = -1;
       copied = i;
       setTimeout(() => (copied = -1), 1200);
-    } catch {}
+    } catch {
+      failed = i;
+    }
   }
   const parts = /(```[\w+-]*\n[\s\S]*?```)/g;
   const tokens =
@@ -20,9 +25,14 @@
     <span class="blk"
       ><span class="bh"
         ><span
-          >{part.slice(3, split) || "text"} · {code.split("\n").length} 行</span
+          >{part.slice(3, split) || "text"} · {$t(
+            code.includes("\n") ? "lines" : "line",
+            { count: code.split("\n").length },
+          )}</span
         ><button class="cp" on:click={() => copy(code, i)}
-          >{copied === i ? "[已复制]" : "[复制]"}</button
+          >[{$t(
+            failed === i ? "copyFailed" : copied === i ? "copied" : "copy",
+          )}]</button
         ></span
       >{#each code.split("\n") as line}<span class="l">{line || " "}</span
         >{/each}</span

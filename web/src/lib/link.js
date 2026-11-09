@@ -8,13 +8,13 @@ export function connect({ status, opened, received, heartbeat }) {
   async function attempt() {
     if (stopped) return;
     if (!window.WebTransport) {
-      status("此浏览器无法使用 WebTransport");
+      status("unsupported");
       return;
     }
     let transport, timeout, pulse, writer;
     const token = {};
     active = token;
-    status("正在连接");
+    status("connecting");
     function fail() {
       try {
         transport?.close();
@@ -55,7 +55,7 @@ export function connect({ status, opened, received, heartbeat }) {
       token.send = (cmd) =>
         writer.write(encoder.encode(JSON.stringify(cmd) + "\n")).catch(fail);
       opened(boot);
-      status("已连接");
+      status("connected");
       pulse = setInterval(() => {
         if (Date.now() - last > 45000) fail();
         else heartbeat();
@@ -80,7 +80,7 @@ export function connect({ status, opened, received, heartbeat }) {
       active = null;
       fail();
       if (!stopped) {
-        status("断线 · 正在重连");
+        status("reconnecting");
         timer = setTimeout(attempt, delay * (0.8 + Math.random() * 0.4));
         delay = Math.min(delay * 2, 15000);
       }
