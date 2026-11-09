@@ -15,11 +15,11 @@ version=$(./dist/pulsec -version | cut -d' ' -f2)
 platform=$(go env GOOS)-$(go env GOARCH)
 name=pulsec-$version-$platform
 mkdir "$work/$name"
-cp dist/pulsec LICENSE Dockerfile compose.yaml compose.local.yaml .dockerignore .env.example "$work/$name/"
+cp dist/pulsec LICENSE Dockerfile compose.yaml compose.local.yaml compose.direct.yaml compose.caddy.yaml .dockerignore .env.example "$work/$name/"
 printf 'PULSEC_TARGET=artifact\nPULSEC_BINARY=pulsec\n' > "$work/$name/.env"
 cp web/build/THIRD-PARTY-*.txt "$work/$name/"
 mkdir -p "$work/$name/deploy"
-cp deploy/pulsec.service "$work/$name/deploy/"
+cp deploy/pulsec.service deploy/certbot-deploy deploy/Caddyfile deploy/Dockerfile.caddy deploy/Dockerfile.caddy.dockerignore "$work/$name/deploy/"
 cp docs/operations.md "$work/$name/README.md"
 printf '%s\n' "$rev" > "$work/$name/SOURCE_COMMIT"
 go version -m dist/pulsec | sed '1s/^dist\///' > "$work/$name/GO-BUILD.txt"
