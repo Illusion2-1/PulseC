@@ -55,7 +55,7 @@ PY
 }
 endpoint="https://$PULSEC_DOMAIN"
 edge
-for i in {1..50}; do
+for _ in {1..50}; do
   if curl --max-time 2 --noproxy '*' --cacert "$dir/edge.crt" -fsS "$endpoint/config" >"$dir/client-config" 2>/dev/null; then break; fi
   if ! kill -0 "$edge_pid" 2>/dev/null; then cat "$dir/caddy.log" >&2; exit 1; fi
   sleep .2
@@ -69,7 +69,7 @@ kill "$edge_pid"; wait "$edge_pid"
 export PULSEC_UPSTREAM_CA="$dir/edge.crt"
 edge
 status=000
-for i in {1..40}; do
+for _ in {1..40}; do
   status=$(curl --max-time 2 --noproxy '*' --cacert "$dir/edge.crt" -so /dev/null -w '%{http_code}' "$endpoint/config") && break
   sleep .2
 done
