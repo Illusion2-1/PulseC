@@ -1,0 +1,7 @@
+{
+  "name": "pulsec-release-checks",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node browser.mjs" },
+  "devDependencies": { "playwright-core": "1.62.1" }
+}
