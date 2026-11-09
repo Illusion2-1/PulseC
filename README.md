@@ -4,6 +4,19 @@
 
 后端代码的阅读顺序、消息投递路径和开发检查见[架构说明](docs/architecture.md)与[贡献指南](CONTRIBUTING.md)。
 
+## 从源码开始
+
+只修改 Go 中继时，干净检出后运行 `go test -race ./internal/...` 即可验证聊天规则、帧格式和网络边界。构建完整应用需要 Go 1.26.10、Node.js 22.23.1、npm 和 make。
+
+```sh
+make build
+./dist/pulsec
+```
+
+构建后打开 <http://127.0.0.1:8443>。`make test` 运行前端单测和 Go 竞态测试。完整检查和依赖扫描见[贡献指南](CONTRIBUTING.md)及[安全报告](docs/security-review.md)。
+
+发行内容见[变更记录](CHANGELOG.md)，候选的适用范围和实测结果见[发布验收报告](docs/release-rc1.md)。
+
 ## Docker Compose 部署（首选）
 
 在源码目录或解压后的 Linux amd64 发布包目录执行。先把**浏览器信任**的完整证书链和对应私钥放到专用的 `certs/fullchain.pem`、`certs/privkey.pem`，让容器的补充组有权读取。源码检出可复制 `.env.example` 为 `.env`；发布包自带 `.env`，请保留其中的 artifact 配置，使用验收过的二进制构建离线镜像。
@@ -35,19 +48,6 @@ docker compose -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
 通过 HTTPS 域名访问。中继必须能直接接收发往该域名和端口的 QUIC 流量。更换证书后重启进程。端口、证书路径等参数可通过 `-help` 查看。
-
-## 从源码构建
-
-候选版验证使用 Go 1.26.10、Node.js 22.23.1、npm 和 make。在项目根目录运行：
-
-```sh
-make build
-./dist/pulsec
-```
-
-`make test` 构建前端并运行前端单测和 Go 竞态测试。完整检查和依赖扫描见[贡献指南](CONTRIBUTING.md)及[安全报告](docs/security-review.md)。
-
-发行内容见[变更记录](CHANGELOG.md)，候选的适用范围和实测结果见[发布验收报告](docs/release-rc1.md)。
 
 ## 频道与身份
 
