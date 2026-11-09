@@ -2,6 +2,8 @@
 
 匿名、即时的文本聊天室。前端使用 SvelteKit CSR，Go 通过 embed 打包静态资源。浏览器通过一条 WebTransport 双向可靠流交换消息和频道状态。
 
+后端代码的阅读顺序、消息投递路径和开发检查见[架构说明](docs/architecture.md)与[贡献指南](CONTRIBUTING.md)。
+
 ## Docker Compose 部署（首选）
 
 在源码目录或解压后的 Linux amd64 发布包目录执行。先把**浏览器信任**的完整证书链和对应私钥放到专用的 `certs/fullchain.pem`、`certs/privkey.pem`，让容器的补充组有权读取。源码检出可复制 `.env.example` 为 `.env`；发布包自带 `.env`，请保留其中的 artifact 配置，使用验收过的二进制构建离线镜像。
