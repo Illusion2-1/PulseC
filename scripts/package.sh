@@ -7,8 +7,8 @@ mkdir -p "$out"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/src"
-git archive -o "$work/source.tar" "$rev"
-tar -xf "$work/source.tar" -C "$work/src"
+git archive --prefix=pulsec/ -o "$work/source.tar" "$rev"
+tar -xf "$work/source.tar" --strip-components=1 -C "$work/src"
 cd "$work/src"
 make build
 version=$(./dist/pulsec -version | cut -d' ' -f2)
@@ -22,7 +22,7 @@ mkdir -p "$work/$name/docs" "$work/$name/deploy" "$work/$name/qa"
 cp docs/operations.md docs/security-review.md docs/security-relay.md docs/release-rc1.md "$work/$name/docs/"
 cp deploy/pulsec.service "$work/$name/deploy/"
 cp RELEASE.md "$work/$name/README.md"
-cp qa/README.md qa/churn.md "$work/$name/qa/"
+cp qa/README.md qa/churn.md qa/refactor-performance.md "$work/$name/qa/"
 cp -r qa/results "$work/$name/qa/"
 printf '%s\n' "$rev" > "$work/$name/SOURCE_COMMIT"
 go version -m dist/pulsec | sed '1s/^dist\///' > "$work/$name/GO-BUILD.txt"
@@ -35,6 +35,7 @@ tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 --mode='u+rwX,go+
 gzip -n -9 "$work/package.tar"
 cp "$work/package.tar.gz" "$out/$name.tar.gz"
 cp dist/pulsec "$out/pulsec"
+gzip -n -9 -c "$work/source.tar" > "$out/pulsec-$version-source.tar.gz"
 cd "$out"
-sha256sum "$name.tar.gz" pulsec > SHA256SUMS
+sha256sum "pulsec-$version-source.tar.gz" "$name.tar.gz" pulsec > SHA256SUMS
 sha256sum -c SHA256SUMS

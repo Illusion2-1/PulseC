@@ -15,7 +15,7 @@ make build
 
 构建后打开 <http://127.0.0.1:8443>。`make test` 运行前端单测和 Go 竞态测试。完整检查和依赖扫描见[贡献指南](CONTRIBUTING.md)及[安全报告](docs/security-review.md)。
 
-发行内容见[变更记录](CHANGELOG.md)，候选的适用范围和实测结果见[发布验收报告](docs/release-rc1.md)。
+发行内容见[变更记录](CHANGELOG.md)，候选的适用范围见[发布验收报告](docs/release-rc1.md)。当前后端与分层前版本的实测对照见[广播性能报告](qa/refactor-performance.md)。
 
 ## Docker Compose 部署（首选）
 
