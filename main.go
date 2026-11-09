@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"io/fs"
@@ -42,7 +43,12 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8443", "TCP and UDP listen address")
 	certFile := flag.String("cert", "", "HTTPS certificate chain")
 	keyFile := flag.String("key", "", "HTTPS private key")
+	version := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *version {
+		fmt.Println("PulseC 0.1.0-rc.1")
+		return
+	}
 	var cert tls.Certificate
 	var pin string
 	var err error
