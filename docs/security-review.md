@@ -21,3 +21,11 @@
 ## 复扫
 
 在干净检出安装工具后运行 `make check security`。需要复用某次官方漏洞库快照时，解压 `https://vuln.go.dev/vulndb.zip` 到本地目录，通过 `GOVULNDB=file:///绝对路径 make security` 指定，并记录快照的时间及校验和。检测 Fedora Go 的 `-X:nodwarf5` 构建时以同一 Go 补丁号识别标准库。npm 可用 `npm audit --json` 查看直接公告与上游派生项。公网域名、反代、宿主机日志、容器运行环境及证书私钥权限需要部署方另行验证。[部署手册](operations.md)
+
+## 容器产物
+
+Dockerfile 固定两个构建阶段的多架构镜像索引。Node 22.23.1 bookworm-slim 为 `sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3`，Go 1.26.10 bookworm 为 `sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473`。两者均已与官方仓库的 tag 元数据核对。维护者应在升级工具链时同步检查新摘要与公告，并重跑源码构建。[Node 官方镜像](https://hub.docker.com/_/node) · [Go 官方镜像](https://hub.docker.com/_/golang)
+
+本机通过 Docker image inspect 和 save 检查了 Linux amd64 候选镜像。运行阶段基于 scratch，镜像的唯一文件系统层只含 0555 模式的 `/pulsec`，以 UID/GID 65532 运行，声明 8443/TCP 与 UDP。已验收文件打包所得镜像中，提取到的可执行文件与本地候选二进制的 SHA-256 相同。可用 `python3 tools/check-image.py 镜像名 [待对照二进制]` 复验。此检查覆盖最终运行层的文件清单和 Go 程序，构建镜像仍要按其各自的更新周期维护。
+
+CI 在每次 PR 校验 Compose 配置。定时和手动检查会分别从源码与现有二进制构建镜像，校验运行层，再通过 Compose 暴露的真实 TCP/UDP 端口，用两个浏览器客户端收发消息。命令见[CI 工作流](../.github/workflows/check.yml)与[发布验证](../qa/README.md)。

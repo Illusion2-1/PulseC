@@ -24,6 +24,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.10'
+      - name: Validate Compose profiles
+        run: |
+          docker compose config -q
+          docker compose -f compose.yaml -f compose.local.yaml config -q
       - run: make tools
       - run: make check security
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -33,3 +37,16 @@ jobs:
           cd qa
           npm ci --no-audit --no-fund
           npm test
+      - name: Verify both Docker distribution paths
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          export PULSEC_IMAGE=pulsec-ci:source
+          docker compose build
+          python3 tools/check-image.py "$PULSEC_IMAGE"
+          sh qa/compose.sh
+          mkdir -p dist/release
+          cp dist/pulsec dist/release/pulsec
+          export PULSEC_IMAGE=pulsec-ci:artifact PULSEC_TARGET=artifact
+          docker compose build
+          python3 tools/check-image.py "$PULSEC_IMAGE" dist/release/pulsec
+          sh qa/compose.sh
