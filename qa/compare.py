@@ -13,6 +13,8 @@ ap = argparse.ArgumentParser(description=__doc__)
 ap.add_argument("baseline", type=Path)
 ap.add_argument("candidate", type=Path)
 ap.add_argument("load", type=Path)
+ap.add_argument("--labels", nargs=2, default=("m0", "rc"), metavar=("BASELINE", "CANDIDATE"),
+                help="names written into each result row (default: m0 rc)")
 ap.add_argument("--rooms", type=int, nargs="+", default=[1, 32])
 ap.add_argument("--clients", type=int, default=512)
 ap.add_argument("--seconds", type=int, default=30)
@@ -84,7 +86,7 @@ def run(label, binary, rooms, rep):
 
 
 for rep in range(1, args.rounds + 1):
-    pair = [("m0", args.baseline), ("rc", args.candidate)]
+    pair = [(args.labels[0], args.baseline), (args.labels[1], args.candidate)]
     for rooms in args.rooms:
         for name, exe in (pair if rep % 2 else reversed(pair)):
             run(name, exe, rooms, rep)
