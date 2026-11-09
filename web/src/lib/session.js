@@ -9,9 +9,9 @@ export function forgetChatData(session, local) {
   local.removeItem("pulsec.channels");
 }
 
-export function readSaved(store, key, fallback) {
+export function readSaved(storageName, key, fallback) {
   try {
-    return JSON.parse(store.getItem(key)) ?? fallback;
+    return JSON.parse(window[storageName].getItem(key)) ?? fallback;
   } catch {
     return fallback;
   }

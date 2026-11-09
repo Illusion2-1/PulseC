@@ -118,15 +118,45 @@
   }
   onMount(() => {
     loadLanguage();
-    const saved = readSaved(sessionStorage, "pulsec.session", {});
-    identity = saved.identity;
-    current = saved.current || "";
-    rooms = Object.assign(Object.create(null), saved.rooms);
-    queue = saved.queue || [];
+    const saved = readSaved("sessionStorage", "pulsec.session", {});
+    if (
+      saved.identity &&
+      nicks.test(saved.identity.nick) &&
+      /^[a-f0-9]{64}$/.test(saved.identity.proof)
+    ) {
+      identity = saved.identity;
+      for (const [name, listed] of Object.entries(saved.rooms || {})
+        .filter(([name]) => names.test(name))
+        .slice(0, 9)) {
+        rooms[name] = listed === true;
+      }
+      current = Object.hasOwn(rooms, saved.current)
+        ? saved.current
+        : Object.keys(rooms)[0] || "";
+      // Treat a partially written or obsolete login without channels as signed out.
+      if (!current) identity = null;
+      queue = Array.isArray(saved.queue)
+        ? saved.queue
+            .filter(
+              (q) =>
+                q?.op === "send" &&
+                Object.hasOwn(rooms, q.room) &&
+                typeof q.id === "string" &&
+                typeof q.raw === "string" &&
+                typeof q.text === "string",
+            )
+            .slice(0, 32)
+        : [];
+    }
     ignored = Array.isArray(saved.ignored)
       ? saved.ignored.filter((trip) => tripPattern.test(trip))
       : [];
-    known = readSaved(localStorage, "pulsec.channels", []);
+    const recent = readSaved("localStorage", "pulsec.channels", []);
+    known = Array.isArray(recent)
+      ? recent
+          .filter((n) => typeof n === "string" && names.test(n))
+          .slice(0, 50)
+      : [];
     for (const name of Object.keys(rooms)) restore(name);
     channel = new URLSearchParams(location.search).get("ch") || "";
     link = connect({
@@ -378,14 +408,15 @@
     const leaving = all ? Object.keys(rooms) : [current];
     if (queue.some((q) => leaving.includes(q.room)))
       return notice("leavePending");
+    const remaining = Object.assign(Object.create(null), rooms);
     for (const name of leaving) {
       link.send({ op: "leave", room: name });
       joined.delete(name);
-      delete rooms[name];
+      delete remaining[name];
       delete states[name];
       delete logs[name];
     }
-    rooms = rooms;
+    rooms = remaining;
     const next = Object.keys(rooms)[0];
     if (next) return select(next);
     identity = null;
