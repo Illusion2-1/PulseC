@@ -1,0 +1,42 @@
+# Caddy owns every public port. Only Caddy and PulseC join the origin network.
+services:
+  pulsec:
+    ports: !reset []
+    networks: [origin]
+  caddy:
+    build:
+      context: ./deploy
+      dockerfile: Dockerfile.caddy
+    depends_on: [pulsec]
+    environment:
+      PULSEC_DOMAIN: ${PULSEC_DOMAIN:?Set PULSEC_DOMAIN to the public DNS name}
+      PULSEC_UPSTREAM: pulsec:8443
+      PULSEC_UPSTREAM_NAME: pulsec.internal
+      PULSEC_UPSTREAM_CA: /etc/caddy/pulsec-origin.crt
+    ports:
+      - "${PULSEC_BIND_IP:-127.0.0.1}:80:80/tcp"
+      - "${PULSEC_BIND_IP:-127.0.0.1}:443:443/tcp"
+      - "${PULSEC_BIND_IP:-127.0.0.1}:443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - type: bind
+        source: ${PULSEC_UPSTREAM_CA:?Set PULSEC_UPSTREAM_CA to the origin trust certificate}
+        target: /etc/caddy/pulsec-origin.crt
+        read_only: true
+        bind:
+          create_host_path: false
+          selinux: z
+    networks: [default, origin]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+networks:
+  origin:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:

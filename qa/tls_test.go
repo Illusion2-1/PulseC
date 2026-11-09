@@ -2,6 +2,7 @@ package qa
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -11,13 +12,16 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -65,6 +69,9 @@ func TestProductionTLSRotation(t *testing.T) {
 	if bin == "" {
 		t.Skip("set PULSEC_BIN to an absolute path to the candidate")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGHUP requires Unix signals")
+	}
 	port, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -74,78 +81,152 @@ func TestProductionTLSRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := "https://" + addr
-	var oldRoots *x509.CertPool
-	client := func(roots *x509.CertPool) *http.Client {
-		return &http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}}
+	cert, key, original := testCertificate(t, 1)
+	replacementCert, replacementKey, renewed := testCertificate(t, 2)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	// #nosec G204 G702 -- the operator supplies the local release artifact under test.
+	proc := exec.CommandContext(ctx, bin, "-addr", addr, "-cert", cert, "-key", key)
+	proc.Dir = t.TempDir()
+	proc.Env = []string{"PATH=" + proc.Dir}
+	diagnostic, err := os.CreateTemp(t.TempDir(), "relay.log")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for serial := int64(1); serial <= 2; serial++ {
-		cert, key, roots := testCertificate(t, serial)
-		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			// #nosec G204 G702 -- the operator explicitly supplies the local release artifact under test.
-			proc := exec.CommandContext(ctx, bin, "-addr", addr, "-cert", cert, "-key", key)
-			proc.Dir = t.TempDir() // no static files and no Node installation on PATH
-			proc.Env = []string{"PATH=" + proc.Dir}
-			if err := proc.Start(); err != nil {
+	defer func() { _ = diagnostic.Close() }()
+	proc.Stderr = diagnostic
+	if err := proc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = proc.Wait() }()
+
+	// Each probe uses a new connection and trust pool. IP-literal requests also
+	// exercise GetCertificate without SNI.
+	getBoot := func(roots *x509.CertPool) (string, error) {
+		h := http.Client{Timeout: time.Second, Transport: &http.Transport{DisableKeepAlives: true, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}}
+		res, err := h.Get(origin + "/config")
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = res.Body.Close() }()
+		var cfg struct{ Pin, Boot string }
+		if err = json.NewDecoder(res.Body).Decode(&cfg); err != nil {
+			return "", err
+		}
+		if res.StatusCode != 200 || cfg.Pin != "" || cfg.Boot == "" {
+			return "", fmt.Errorf("unexpected TLS-mode config on HTTP %d", res.StatusCode)
+		}
+		return cfg.Boot, nil
+	}
+	dial := func(roots *x509.CertPool) (*wt.Session, error) {
+		tr := &wt.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
+		t.Cleanup(func() { _ = tr.Close() })
+		_, sess, err := tr.Dial(ctx, origin+"/connect", http.Header{"Origin": {origin}})
+		return sess, err
+	}
+	boot := ""
+	for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline); {
+		if boot, err = getBoot(original); err == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err != nil || boot == "" {
+		t.Fatal("listener failed to start", err)
+	}
+
+	// Keep this exact chat stream across both reloading attempts.
+	sess, err := dial(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := sess.OpenStreamSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprintf(stream, "{\"op\":\"identity\",\"nick\":\"Probe\",\"proof\":%q}\n{\"op\":\"join\",\"room\":\"rotation\"}\n", strings.Repeat("1", 64)); err != nil {
+		t.Fatal(err)
+	}
+	scan := bufio.NewScanner(stream)
+	send := func(n int) {
+		t.Helper()
+		if err := stream.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		id := fmt.Sprintf("%036d", n)
+		text := fmt.Sprintf("rotation-%d", n)
+		if _, err := fmt.Fprintf(stream, "{\"op\":\"send\",\"room\":\"rotation\",\"kind\":\"chat\",\"text\":%q,\"id\":%q}\n", text, id); err != nil {
+			t.Fatal(err)
+		}
+		received := false
+		for scan.Scan() {
+			var event struct{ Op, Room, ID, Text string }
+			if err := json.Unmarshal(scan.Bytes(), &event); err != nil {
 				t.Fatal(err)
 			}
-			defer func() { cancel(); _ = proc.Wait() }()
-			h := client(roots)
-			defer h.CloseIdleConnections()
-			var res *http.Response
-			for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline); {
-				res, err = h.Get(origin + "/config")
-				if err == nil {
-					break
+			switch event.Op {
+			case "message":
+				received = event.Room == "rotation" && event.Text == text
+			case "ack":
+				if !received || event.ID != id {
+					t.Fatal("incomplete delivery on existing session")
 				}
-				time.Sleep(30 * time.Millisecond)
+				return
+			case "error", "limited":
+				t.Fatal("existing session rejected", event.Op)
 			}
+		}
+		t.Fatal("lost chat stream", scan.Err())
+	}
+	send(1)
+	reload := func(want string) {
+		t.Helper()
+		if err := proc.Process.Signal(syscall.SIGHUP); err != nil {
+			t.Fatal(err)
+		}
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			data, err := os.ReadFile(diagnostic.Name())
 			if err != nil {
 				t.Fatal(err)
 			}
-			var cfg struct{ Pin, Boot string }
-			err = json.NewDecoder(res.Body).Decode(&cfg)
-			_ = res.Body.Close()
-			if err != nil || res.StatusCode != 200 || cfg.Pin != "" || cfg.Boot == "" {
-				t.Fatal("invalid TLS-mode config", err)
+			if bytes.Contains(data, []byte(want)) {
+				return
 			}
-			if oldRoots != nil {
-				h := client(oldRoots)
-				res, err := h.Get(origin + "/config")
-				h.CloseIdleConnections()
-				if err == nil {
-					_ = res.Body.Close()
-					t.Fatal("previous certificate still trusted")
-				}
-			}
-			tr := wt.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
-			defer func() { _ = tr.Close() }()
-			_, sess, err := tr.Dial(ctx, origin+"/connect", http.Header{"Origin": {origin}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = sess.CloseWithError(0, "done") }()
-			stream, err := sess.OpenStreamSync(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_ = stream.SetDeadline(time.Now().Add(3 * time.Second))
-			if _, err = stream.Write([]byte("{\"op\":\"identity\",\"nick\":\"Probe\",\"proof\":\"" + strings.Repeat("1", 64) + "\"}\n{\"op\":\"ping\",\"id\":\"rotation\"}\n")); err != nil {
-				t.Fatal(err)
-			}
-			scan := bufio.NewScanner(stream)
-			for scan.Scan() {
-				var msg struct{ Op, ID string }
-				if err := json.Unmarshal(scan.Bytes(), &msg); err != nil {
-					t.Fatal(err)
-				}
-				if msg.Op == "pong" && msg.ID == "rotation" {
-					return
-				}
-			}
-			t.Fatal("missing pong after TLS rotation", scan.Err())
-		}()
-		oldRoots = roots
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("relay did not report %q", want)
+	}
+	fresh := func(roots *x509.CertPool) {
+		t.Helper()
+		if got, err := getBoot(roots); err != nil || got != boot {
+			t.Fatalf("new HTTPS handshake or boot changed: %v", err)
+		}
+		s, err := dial(roots)
+		if err != nil {
+			t.Fatalf("new WebTransport handshake: %v", err)
+		}
+		_ = s.CloseWithError(0, "done")
+	}
+
+	if err := os.Rename(replacementKey, key); err != nil {
+		t.Fatal(err)
+	}
+	reload("certificate reload failed")
+	fresh(original)
+	send(2)
+
+	if err := os.Rename(replacementCert, cert); err != nil {
+		t.Fatal(err)
+	}
+	reload("certificate reloaded")
+	fresh(renewed)
+	send(3)
+	if _, err := getBoot(original); err == nil {
+		t.Fatal("new HTTPS handshake still accepted the previous certificate")
+	}
+	if unexpected, err := dial(original); err == nil {
+		_ = unexpected.CloseWithError(0, "done")
+		t.Fatal("new WebTransport handshake still accepted the previous certificate")
 	}
 }

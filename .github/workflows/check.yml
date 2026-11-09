@@ -28,6 +28,14 @@ jobs:
         run: |
           docker compose config -q
           docker compose -f compose.yaml -f compose.local.yaml config -q
+          export PULSEC_DOMAIN=chat.example.org PULSEC_WEBROOT=/srv/acme PULSEC_UPSTREAM_CA=/etc/caddy/origin.crt
+          public_ports='[.ports[] | "\(.published)/\(.protocol)"] | sort == ["443/tcp", "443/udp", "80/tcp"]'
+          docker compose -f compose.yaml -f compose.direct.yaml config --format json |
+            jq -e ".services.pulsec | $public_ports"
+          docker compose -f compose.yaml -f compose.caddy.yaml config --format json |
+            jq -e ".services | (.pulsec.ports // [] | length == 0) and (.caddy | $public_ports)"
+      - name: Verify certificate publication and retries
+        run: sh qa/certbot-deploy.sh
       - run: make tools
       - run: make check security
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -50,3 +58,8 @@ jobs:
           docker compose build
           python3 tools/check-image.py "$PULSEC_IMAGE" dist/release/pulsec
           sh qa/compose.sh
+      - name: Verify Caddy WebTransport proxy
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          docker build -f deploy/Dockerfile.caddy --output "type=local,dest=$RUNNER_TEMP/caddy-root" deploy
+          CADDY_BIN="$RUNNER_TEMP/caddy-root/usr/bin/caddy" PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh

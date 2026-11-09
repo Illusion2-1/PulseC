@@ -18,7 +18,12 @@ On Linux, run this from the source tree or an unpacked binary distribution:
 docker compose -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
-Open <http://127.0.0.1:8443>. For a public deployment, use the main Compose file, supply a trusted TLS certificate for your domain, and expose both TCP and UDP on the same port. [Deployment and rollback (中文)](docs/operations.md)
+Open <http://127.0.0.1:8443>.
+
+## Public deployment
+
+- **Serve directly with PulseC.** PulseC serves Let’s Encrypt HTTP-01 challenge files on TCP 80, HTTPS on TCP 443, and WebTransport on UDP 443. Certbot can renew the certificate while chat sessions stay connected. [Direct deployment and renewal (中文)](docs/operations.md#direct)
+- **Put Caddy in front.** Caddy owns public ports 80 and 443, manages the public certificate, and proxies both the site and WebTransport sessions. PulseC is reachable only on the private network. [Caddy setup (中文)](docs/operations.md#caddy)
 
 ## Chatting
 

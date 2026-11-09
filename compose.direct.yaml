@@ -1,0 +1,30 @@
+# PulseC serves HTTP-01 on TCP 80, HTTPS on TCP 443 and WebTransport on UDP 443.
+services:
+  pulsec:
+    ports: !override
+      - "${PULSEC_BIND_IP:-127.0.0.1}:80:8080/tcp"
+      - "${PULSEC_BIND_IP:-127.0.0.1}:443:8443/tcp"
+      - "${PULSEC_BIND_IP:-127.0.0.1}:443:8443/udp"
+    volumes:
+      - type: bind
+        source: ${PULSEC_WEBROOT:?Set PULSEC_WEBROOT to the Certbot webroot}
+        target: /acme
+        read_only: true
+        bind:
+          create_host_path: false
+          selinux: Z
+    command:
+      - -addr
+      - ":8443"
+      - -http-addr
+      - ":8080"
+      - -public-host
+      - ${PULSEC_DOMAIN:?Set PULSEC_DOMAIN to the public DNS name}
+      - -acme-webroot
+      - /acme
+      - -cert
+      - /tls/fullchain.pem
+      - -key
+      - /tls/privkey.pem
+      - -stats-interval
+      - 1m

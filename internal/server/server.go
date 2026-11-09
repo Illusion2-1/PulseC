@@ -11,6 +11,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
@@ -21,22 +23,70 @@ import (
 )
 
 type Config struct {
-	Addr, CertFile, KeyFile string
-	MaxSessions, SourceRate int
-	StatsInterval           time.Duration
+	Addr, CertFile, KeyFile           string
+	HTTPAddr, PublicHost, ACMEWebroot string
+	MaxSessions, SourceRate           int
+	StatsInterval                     time.Duration
 }
 
 // Run serves TCP and UDP on cfg.Addr until shutdown or a listener failure.
-func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger) error {
+func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, reload <-chan os.Signal) error {
 	if cfg.MaxSessions < 1 || cfg.MaxSessions > 4096 || cfg.StatsInterval < 0 || cfg.SourceRate < 1 || cfg.SourceRate > 4096 {
 		return errors.New("invalid max-sessions, stats-interval or source-rate")
 	}
-	cert, pin, err := loadCertificate(cfg)
+	direct, err := cfg.directMode()
 	if err != nil {
 		return err
 	}
+	cert, pin, err := loadCertificate(cfg)
+	waiting := false
+	if direct && errors.Is(err, os.ErrNotExist) {
+		waiting, err = missingPair(cfg, err)
+	}
+
+	if err != nil {
+		return err
+	}
+	result := make(chan error, 3)
+	if direct {
+		stopHTTP, err := startChallenge(cfg, result, logger)
+		if err != nil {
+			return err
+		}
+		defer stopHTTP()
+	}
+	if waiting {
+		logger.Print("waiting for initial TLS certificate; send SIGHUP after issuance")
+		for waiting {
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-result:
+				return err
+			case _, open := <-reload:
+				if !open {
+					reload = nil
+					continue
+				}
+				cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+				if err != nil {
+					logger.Printf("certificate reload failed: %v", err)
+					continue
+				}
+				waiting = false
+				logger.Print("initial TLS certificate loaded")
+			}
+		}
+	}
 	local := pin != ""
-	conf := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
+	// ServeTLS and HTTP/3 clone this config. Both clones consult the same
+	// certificate pointer for every full handshake, including clients without SNI.
+	var current atomic.Pointer[tls.Certificate]
+	current.Store(&cert)
+	conf := &tls.Config{
+		MinVersion:     tls.VersionTLS13,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return current.Load(), nil },
+	}
 	mux := http.NewServeMux()
 	handler := browserHeaders(local, mux)
 	wt := &webtransport.Server{H3: &http3.Server{
@@ -70,7 +120,6 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger) erro
 	defer cancel()
 	go maintain(ctx, hub, gate, cfg.StatsInterval, logger)
 
-	result := make(chan error, 2)
 	go func() { result <- wt.ListenAndServe() }()
 	go func() {
 		if local {
@@ -81,11 +130,29 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger) erro
 			result <- srv.ServeTLS(ln, "", "")
 		}
 	}()
-	select {
-	case err := <-result:
-		return err
-	case <-ctx.Done():
-		return nil
+	for {
+		select {
+		case err := <-result:
+			return err
+		case <-ctx.Done():
+			return nil
+		case _, open := <-reload:
+			if !open {
+				reload = nil
+				continue
+			}
+			// The development certificate pin belongs to this process lifetime.
+			if local {
+				continue
+			}
+			pair, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+			if err != nil {
+				logger.Printf("certificate reload failed: %v", err)
+				continue
+			}
+			current.Store(&pair)
+			logger.Print("certificate reloaded")
+		}
 	}
 }
 func maintain(ctx context.Context, h *chat.Hub, g *ingress, interval time.Duration, logger *log.Logger) {

@@ -18,7 +18,12 @@
 docker compose -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
-打开 <http://127.0.0.1:8443>。公网部署使用主 Compose 配置、域名证书及同端口的 TCP 和 UDP。[部署与回退](docs/operations.md)
+打开 <http://127.0.0.1:8443>。
+
+## 公网部署
+
+- **PulseC 直出** · PulseC 在 TCP 80 提供 Let’s Encrypt 文件验证，在 TCP/UDP 443 提供 HTTPS 和 WebTransport。Certbot 续期后可以在线换证。[直出与续期](docs/operations.md#direct)
+- **Caddy 反代** · Caddy 独占公网 80/443，管理公网证书，代理页面与 WebTransport 会话。PulseC 只在内部网络提供服务。[Caddy 配置与启动](docs/operations.md#caddy)
 
 ## 使用聊天室
 
