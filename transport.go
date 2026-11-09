@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
+	"pulsec/internal/protocol"
+
 	"errors"
 	"log/slog"
 	"net"
@@ -13,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -171,14 +170,19 @@ func (g *ingress) connect(wt *webtransport.Server, h *hub, local bool) http.Hand
 				}
 			}
 		}()
-		scanner := bufio.NewScanner(stream)
-		scanner.Buffer(make([]byte, 2048), 32768)
+		reader := protocol.NewReader(stream)
 		for {
-			if stream.SetReadDeadline(time.Now().Add(90*time.Second)) != nil || !scanner.Scan() {
+			if stream.SetReadDeadline(time.Now().Add(90*time.Second)) != nil {
 				return
 			}
-			var c command
-			if !utf8.Valid(scanner.Bytes()) || json.Unmarshal(scanner.Bytes(), &c) != nil || !h.handle(p, c) {
+			c, err := reader.ReadCommand()
+			if err != nil {
+				if errors.Is(err, protocol.ErrInvalidCommand) {
+					g.failures.Add(1)
+				}
+				return
+			}
+			if !h.handle(p, c) {
 				g.failures.Add(1)
 				return
 			}

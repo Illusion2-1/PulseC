@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"pulsec/internal/protocol"
 	"strings"
 	"testing"
 	"time"
@@ -14,8 +14,8 @@ import (
 func joinedPeer(t *testing.T, h *hub, nick, proof string) *peer {
 	t.Helper()
 	p := &peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
-	h.handle(p, command{Op: "identity", Nick: nick, Proof: strings.Repeat(proof, 64), RosterDelta: true})
-	h.handle(p, command{Op: "join", Room: "room"})
+	h.handle(p, protocol.Command{Op: "identity", Nick: nick, Proof: strings.Repeat(proof, 64), RosterDelta: true})
+	h.handle(p, protocol.Command{Op: "join", Room: "room"})
 	events(t, p)
 	return p
 }
@@ -28,7 +28,7 @@ func TestAddressAndTopicLimitsSurviveIdentityChanges(t *testing.T) {
 	b.source = a.source
 	send := func(p *peer, id int, kind string) event {
 		events(t, p)
-		h.handle(p, command{Op: "send", Room: "room", Kind: kind, ID: fmt.Sprintf("%036d", id), Text: "example"})
+		h.handle(p, protocol.Command{Op: "send", Room: "room", Kind: kind, ID: fmt.Sprintf("%036d", id), Text: "example"})
 		list := events(t, p)
 		return list[len(list)-1]
 	}
@@ -60,32 +60,32 @@ func TestAbuseRemainsBounded(t *testing.T) {
 	a := joinedPeer(t, h, "a", "a")
 	// Invalid whisper targets must not consume a receipt or allocate trip history.
 	for i := 0; i < 10; i++ {
-		h.handle(a, command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", i), Kind: "whisper", To: "missing", Text: "x"})
+		h.handle(a, protocol.Command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", i), Kind: "whisper", To: "missing", Text: "x"})
 	}
 	if len(h.receipts) != 0 || len(h.limits) != 0 {
 		t.Fatal("invalid messages retained state")
 	}
 	events(t, a)
-	h.handle(a, command{Op: "directory", Known: make([]string, 51)})
+	h.handle(a, protocol.Command{Op: "directory", Known: make([]string, 51)})
 	if e := events(t, a); e[0]["code"] != "too_many_known" {
 		t.Fatal(e)
 	}
 	for len(h.rooms) < maxRooms {
 		h.rooms[fmt.Sprint(len(h.rooms))] = &channel{}
 	}
-	h.handle(a, command{Op: "join", Room: "new"})
+	h.handle(a, protocol.Command{Op: "join", Room: "new"})
 	if e := events(t, a); e[0]["code"] != "server_busy" {
 		t.Fatal(e)
 	}
 	for i := 0; i < maxReceipts; i++ {
 		h.receipts[fmt.Sprint(i)] = receipt{time.Now(), "ref"}
 	}
-	h.handle(a, command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", 99), Kind: "chat", Text: "x"})
+	h.handle(a, protocol.Command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", 99), Kind: "chat", Text: "x"})
 	if e := events(t, a); len(e) != 1 || e[0]["code"] != "server_busy" {
 		t.Fatal("accepted without retry capacity", e)
 	}
 	for range 30 {
-		h.handle(a, command{Op: "ping"})
+		h.handle(a, protocol.Command{Op: "ping"})
 	}
 	e := events(t, a)
 	if e[len(e)-1]["code"] != "control_limited" {
@@ -98,7 +98,7 @@ func TestSlowRecipientDoesNotBlockOtherRecipients(t *testing.T) {
 	b := joinedPeer(t, h, "slow", "b")
 	b.send = make(chan []byte, 1)
 	for i := 0; i < 2; i++ {
-		h.handle(a, command{Op: "send", Room: "room", Kind: "chat", ID: fmt.Sprintf("%036d", i), Text: "x"})
+		h.handle(a, protocol.Command{Op: "send", Room: "room", Kind: "chat", ID: fmt.Sprintf("%036d", i), Text: "x"})
 	}
 	if !b.stopped || !b.overflow || a.stopped {
 		t.Fatal("wrong recipient disconnected")
@@ -153,11 +153,8 @@ func FuzzUntrustedCommand(f *testing.F) {
 	f.Add([]byte(`{"op":"send","room":"room","kind":"whisper","to":"a"}`))
 	f.Add([]byte(`{"op":"identity","proof":42}`))
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		if len(raw) >= 32768 {
-			return
-		}
-		var c command
-		if json.Unmarshal(raw, &c) != nil {
+		c, err := protocol.Decode(raw)
+		if err != nil {
 			return
 		}
 		h := newHub()

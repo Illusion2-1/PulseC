@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"pulsec/internal/protocol"
 	"strings"
 	"testing"
 	"time"
 )
+
+type event map[string]any
 
 func events(t *testing.T, p *peer) []event {
 	t.Helper()
@@ -26,13 +29,13 @@ func TestRelayDelivery(t *testing.T) {
 	h := newHub()
 	join := func(n, cred string) *peer {
 		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 64), stop: make(chan struct{})}
-		h.handle(p, command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
-		h.handle(p, command{Op: "join", Room: "room"})
+		h.handle(p, protocol.Command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
+		h.handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
 	}
 	a := join("A", "a")
 	b := join("B", "b")
-	send := command{Op: "send", Kind: "chat", Room: "room", Text: "first", ID: fmt.Sprintf("%036d", 0)}
+	send := protocol.Command{Op: "send", Kind: "chat", Room: "room", Text: "first", ID: fmt.Sprintf("%036d", 0)}
 	h.handle(a, send)
 	c := join("B", "c")
 	for _, e := range events(t, c) {
@@ -71,7 +74,7 @@ func TestRelayDelivery(t *testing.T) {
 	if events(t, a)[0]["op"] != "limited" {
 		t.Fatal("reconnect reset limiter")
 	}
-	h.handle(c, command{Op: "directory"})
+	h.handle(c, protocol.Command{Op: "directory"})
 	var rows []any
 	for _, e := range events(t, c) {
 		if e["op"] == "directory" {
@@ -107,8 +110,8 @@ func TestRosterAcrossProtocolVersions(t *testing.T) {
 	h := newHub()
 	join := func(delta bool) *peer {
 		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 16), stop: make(chan struct{})}
-		h.handle(p, command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
-		h.handle(p, command{Op: "join", Room: "room"})
+		h.handle(p, protocol.Command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
+		h.handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
 	}
 	legacy := join(false)
@@ -128,7 +131,7 @@ func TestRosterAcrossProtocolVersions(t *testing.T) {
 	if target != float64(second.memberID) || first.memberID == second.memberID {
 		t.Fatal("identical identities need distinct roster entries")
 	}
-	h.handle(second, command{Op: "nick", Nick: "new"})
+	h.handle(second, protocol.Command{Op: "nick", Nick: "new"})
 	e = events(t, first)
 	if len(e) != 1 || e[0]["action"] != "nick" || e[0]["user"].(map[string]any)["id"] != target || e[0]["user"].(map[string]any)["nick"] != "new" {
 		t.Fatal("rename", e)
@@ -157,7 +160,7 @@ func TestProtocolExamples(t *testing.T) {
 	}
 	var cases []struct {
 		Setup   string
-		Command command
+		Command protocol.Command
 		Event   event
 	}
 	if err := json.Unmarshal(data, &cases); err != nil {
@@ -167,8 +170,8 @@ func TestProtocolExamples(t *testing.T) {
 	for _, tc := range cases {
 		p := &peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
 		if tc.Setup == "member" {
-			h.handle(p, command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
-			h.handle(p, command{Op: "join", Room: "room"})
+			h.handle(p, protocol.Command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
+			h.handle(p, protocol.Command{Op: "join", Room: "room"})
 			events(t, p)
 		}
 		if !h.handle(p, tc.Command) {

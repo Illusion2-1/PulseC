@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net/netip"
+	"pulsec/internal/protocol"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,12 +13,6 @@ import (
 	"unicode/utf8"
 )
 
-type command struct {
-	Op, Room, Nick, Proof, Kind, To, Text, ID string
-	Public, RosterDelta                       bool
-	Known                                     []string
-}
-type event map[string]any
 type peer struct {
 	source        netip.Addr
 	controlBudget timeBudget
@@ -114,13 +108,6 @@ func (p *peer) close() {
 		p.stopped = true
 	}
 }
-func pack(e event) []byte {
-	b, err := json.Marshal(e)
-	if err != nil {
-		panic(err)
-	}
-	return append(b, '\n')
-}
 func (p *peer) queue(b []byte) {
 	select {
 	case p.send <- b:
@@ -129,9 +116,7 @@ func (p *peer) queue(b []byte) {
 		p.close()
 	}
 }
-func (p *peer) emit(e event) { p.queue(pack(e)) }
-func (r *channel) broadcast(e event) {
-	b := pack(e)
+func (r *channel) broadcast(b []byte) {
 	for p := range r.members {
 		p.queue(b)
 	}
@@ -145,14 +130,15 @@ func (r *channel) advance(now int64) {
 		r.minute = m
 	}
 }
-func (p *peer) member() event {
-	return event{"id": p.memberID, "nick": p.nick, "trip": p.trip, "active": p.active}
+func (p *peer) member() protocol.Member {
+	return protocol.Member{ID: p.memberID, Nick: p.nick, Trip: p.trip, Active: p.active}
 }
 
 // A new subscriber gets one complete roster. Older clients still receive snapshots;
 // clients advertising delta support apply changes in order on the same reliable stream.
-func (r *channel) membership(room, action, text string, member *peer) {
-	change := pack(event{"op": "member", "room": room, "action": action, "user": member.member(), "text": text})
+func (r *channel) membership(room, action string, member *peer) {
+	user := member.member()
+	change := protocol.MemberChange(room, action, user)
 	var snapshot, notice []byte
 	for p := range r.members {
 		if action == "join" && p == member {
@@ -163,10 +149,8 @@ func (r *channel) membership(room, action, text string, member *peer) {
 			continue
 		}
 		if snapshot == nil {
-			snapshot = pack(r.state(room))
-			if text != "" {
-				notice = pack(event{"op": "notice", "room": room, "action": action, "user": member.member(), "text": text})
-			}
+			snapshot = r.state(room)
+			notice = protocol.LegacyNotice(room, action, user)
 		}
 		if notice != nil {
 			p.queue(notice)
@@ -174,13 +158,13 @@ func (r *channel) membership(room, action, text string, member *peer) {
 		p.queue(snapshot)
 	}
 }
-func (r *channel) state(name string) event {
+func (r *channel) state(name string) []byte {
 	r.advance(time.Now().Unix())
-	users := make([]event, 0, len(r.members))
+	users := make([]protocol.Member, 0, len(r.members))
 	for p := range r.members {
 		users = append(users, p.member())
 	}
-	return event{"op": "state", "room": name, "users": users, "pulse": r.bins, "topic": r.topic, "public": r.public}
+	return protocol.State(name, r.topic, r.public, users, r.bins)
 }
 func (h *hub) remove(p *peer) {
 	h.Lock()
@@ -198,7 +182,7 @@ func (h *hub) leave(p *peer, name string) {
 	if len(r.members) == 0 {
 		delete(h.rooms, name)
 	} else {
-		r.membership(name, "leave", "− "+p.nick+"#"+p.trip, p)
+		r.membership(name, "leave", p)
 	}
 }
 
@@ -207,7 +191,7 @@ var roomOK = regexp.MustCompile(`^[\pL\pN_-]{1,24}$`)
 var proofOK = regexp.MustCompile("^[a-f0-9]{64}$")
 var idOK = regexp.MustCompile("^[a-f0-9-]{36}$")
 
-func (h *hub) handle(p *peer, c command) bool {
+func (h *hub) handle(p *peer, c protocol.Command) bool {
 	h.Lock()
 	defer h.Unlock()
 	now := time.Now()
@@ -219,14 +203,12 @@ func (h *hub) handle(p *peer, c command) bool {
 	if p.stopped || p.requests > 60 {
 		return false
 	}
-	fail := func(code, msg string) {
-		p.emit(event{"op": "error", "id": c.ID, "room": c.Room, "text": msg, "code": code, "request": c.Op})
-	}
+	fail := func(problem protocol.Problem) { p.queue(protocol.Reject(c, problem)) }
 	switch c.Op {
 	case "directory", "join", "leave", "nick", "ping":
 		if !p.controlBudget.take(now, 500*time.Millisecond, 24) {
 			h.limited++
-			fail("control_limited", "请求过于频繁，请稍后再试")
+			fail(protocol.ControlLimited)
 			return true
 		}
 	}
@@ -234,7 +216,7 @@ func (h *hub) handle(p *peer, c command) bool {
 	switch c.Op {
 	case "directory":
 		if len(c.Known) > 50 {
-			fail("too_many_known", "最多查询 50 个已知频道")
+			fail(protocol.TooManyKnown)
 			break
 		}
 		known := map[string]bool{}
@@ -254,7 +236,7 @@ func (h *hub) handle(p *peer, c command) bool {
 			}
 			return a > b
 		})
-		rows := []event{}
+		rows := []protocol.DirectoryRoom{}
 		publicRows := 0
 		for _, n := range names {
 			r := h.rooms[n]
@@ -265,9 +247,9 @@ func (h *hub) handle(p *peer, c command) bool {
 				continue
 			}
 			r.advance(now.Unix())
-			rows = append(rows, event{"name": n, "online": len(r.members), "pulse": r.bins, "topic": r.topic, "public": r.public})
+			rows = append(rows, protocol.DirectoryRoom{Name: n, Online: len(r.members), Pulse: r.bins, Topic: r.topic, Public: r.public})
 		}
-		p.emit(event{"op": "directory", "rooms": rows, "online": len(h.peers), "uptime": int(time.Since(h.start).Seconds())})
+		p.queue(protocol.Directory(rows, len(h.peers), int(time.Since(h.start).Seconds())))
 	case "identity":
 		if p.trip != "" || !nickOK.MatchString(c.Nick) || !proofOK.MatchString(c.Proof) {
 			return false
@@ -279,23 +261,23 @@ func (h *hub) handle(p *peer, c command) bool {
 		p.memberID = h.nextMemberID
 		p.rosterDelta = c.RosterDelta
 		p.active = now.Unix()
-		p.emit(event{"op": "identity", "trip": p.trip})
+		p.queue(protocol.Identity(p.trip))
 	case "join":
 		if p.trip == "" {
-			fail("identity_required", "请先设置身份")
+			fail(protocol.IdentityRequired)
 			break
 		}
 		if !roomOK.MatchString(c.Room) {
-			fail("invalid_room", "频道名无效")
+			fail(protocol.InvalidRoom)
 			break
 		}
 		if !p.rooms[c.Room] && len(p.rooms) >= 9 {
-			fail("room_limit", "最多加入 9 个频道")
+			fail(protocol.RoomLimit)
 			break
 		}
 		if r == nil {
 			if len(h.rooms) >= maxRooms {
-				fail("server_busy", "频道数量已达上限")
+				fail(protocol.RoomCapacity)
 				break
 			}
 			r = &channel{members: map[*peer]bool{}, public: c.Public || c.Room == "lobby"}
@@ -305,9 +287,9 @@ func (h *hub) handle(p *peer, c command) bool {
 			r.members[p] = true
 			p.rooms[c.Room] = true
 			h.peers[p] = true
-			r.membership(c.Room, "join", "+ "+p.nick+"#"+p.trip, p)
+			r.membership(c.Room, "join", p)
 		}
-		p.emit(r.state(c.Room))
+		p.queue(r.state(c.Room))
 	case "leave":
 		if p.rooms[c.Room] {
 			h.leave(p, c.Room)
@@ -316,38 +298,38 @@ func (h *hub) handle(p *peer, c command) bool {
 			}
 		}
 	case "ping":
-		p.emit(event{"op": "pong", "id": c.ID})
+		p.queue(protocol.Pong(c.ID))
 		for n := range p.rooms {
 			r := h.rooms[n]
 			r.advance(now.Unix())
-			p.emit(event{"op": "pulse", "room": n, "pulse": r.bins})
+			p.queue(protocol.Pulse(n, r.bins))
 		}
 	case "nick":
 		if !nickOK.MatchString(c.Nick) || p.trip == "" {
-			fail("invalid_nick", "昵称无效")
+			fail(protocol.InvalidNick)
 			break
 		}
 		p.nick = c.Nick
-		p.emit(event{"op": "nick", "nick": p.nick})
+		p.queue(protocol.Nick(p.nick))
 		for n := range p.rooms {
-			h.rooms[n].membership(n, "nick", "", p)
+			h.rooms[n].membership(n, "nick", p)
 		}
 	case "send":
 		if !p.rooms[c.Room] {
-			fail("not_joined", "尚未加入频道")
+			fail(protocol.NotJoined)
 			break
 		}
 		if !idOK.MatchString(c.ID) {
-			fail("invalid_id", "消息编号无效")
+			fail(protocol.InvalidID)
 			break
 		}
 		key := p.trip + "/" + c.ID
 		if v, ok := h.receipts[key]; ok {
-			p.emit(event{"op": "ack", "id": c.ID, "ref": v.id})
+			p.queue(protocol.Ack(c.ID, v.id))
 			break
 		}
 		if strings.TrimSpace(c.Text) == "" || utf8.RuneCountInString(c.Text) > 2000 {
-			fail("invalid_text", "消息需要 1–2000 个字符")
+			fail(protocol.InvalidText)
 			break
 		}
 		l := h.limits[p.trip]
@@ -365,11 +347,11 @@ func (h *hub) handle(p *peer, c command) bool {
 				}
 			}
 			h.limited++
-			p.emit(event{"op": "limited", "id": c.ID, "wait": max(time.Until(l.until).Milliseconds(), 1)})
+			p.queue(protocol.Limited(c.ID, time.Until(l.until).Milliseconds()))
 			break
 		}
 		if len(h.receipts) >= maxReceipts {
-			fail("server_busy", "中继暂时繁忙，请稍后再试")
+			fail(protocol.ServerBusy)
 			break
 		}
 		// The sender address comes only from QUIC. Never trust forwarding headers.
@@ -377,7 +359,7 @@ func (h *hub) handle(p *peer, c command) bool {
 			b := h.sources[p.source]
 			if b == nil {
 				if len(h.sources) >= maxReceipts {
-					fail("server_busy", "中继暂时繁忙，请稍后再试")
+					fail(protocol.ServerBusy)
 					break
 				}
 				b = &timeBudget{}
@@ -385,26 +367,25 @@ func (h *hub) handle(p *peer, c command) bool {
 			}
 			if !b.take(now, time.Second/time.Duration(h.sourceRate), 2*h.sourceRate) {
 				h.limited++
-				p.emit(event{"op": "limited", "id": c.ID, "wait": max(b.next.Sub(now).Milliseconds(), 1)})
+				p.queue(protocol.Limited(c.ID, b.next.Sub(now).Milliseconds()))
 				break
 			}
 		}
 		sum := sha256.Sum256([]byte(key))
 		ref := hex.EncodeToString(sum[:6])
-		msg := event{"op": "message", "room": c.Room, "ref": ref, "nick": p.nick, "trip": p.trip, "kind": c.Kind, "text": c.Text, "time": now.UnixMilli()}
 		switch c.Kind {
 		case "chat", "me":
-			r.broadcast(msg)
+			r.broadcast(protocol.Message(c, p.member(), ref, now.UnixMilli(), ""))
 			r.advance(now.Unix())
 			r.bins[29]++
 		case "topic":
 			if utf8.RuneCountInString(c.Text) > 120 {
-				fail("topic_too_long", "主题最长 120 字")
+				fail(protocol.TopicTooLong)
 				return true
 			}
 			if now.Sub(r.topicChanged) < 10*time.Second {
 				h.limited++
-				fail("control_limited", "主题修改过于频繁，请稍后再试")
+				fail(protocol.TopicLimited)
 				return true
 			}
 			r.topicChanged = now
@@ -415,32 +396,32 @@ func (h *hub) handle(p *peer, c command) bool {
 			for u := range r.members {
 				if u.nick == c.To || u.nick+"#"+u.trip == c.To {
 					if target != nil {
-						fail("ambiguous_recipient", "收件人有重名，请指定 昵称#完整trip")
+						fail(protocol.AmbiguousRecipient)
 						return true
 					}
 					target = u
 				}
 			}
 			if target == nil {
-				fail("recipient_offline", "收件人不在线")
+				fail(protocol.RecipientOffline)
 				return true
 			}
-			msg["to"] = target.nick + "#" + target.trip
-			target.emit(msg)
+			msg := protocol.Message(c, p.member(), ref, now.UnixMilli(), target.nick+"#"+target.trip)
+			target.queue(msg)
 			if target != p {
-				p.emit(msg)
+				p.queue(msg)
 			}
 		default:
-			fail("unknown_kind", "未知消息类型")
+			fail(protocol.UnknownKind)
 			return true
 		}
 		h.receipts[key] = receipt{now, ref}
 		h.limits[p.trip] = l
 		l.sent = append(l.sent, now)
 		p.active = now.Unix()
-		p.emit(event{"op": "ack", "id": c.ID, "ref": ref})
+		p.queue(protocol.Ack(c.ID, ref))
 	default:
-		fail("unknown_op", "未知操作")
+		fail(protocol.UnknownOp)
 	}
 	return true
 }
