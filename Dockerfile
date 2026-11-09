@@ -13,6 +13,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
+COPY internal/ ./internal/
 COPY --from=ui /src/web/build ./web/build
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/pulsec .
 

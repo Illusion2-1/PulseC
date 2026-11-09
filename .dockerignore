@@ -3,6 +3,9 @@
 !go.mod
 !go.sum
 !/*.go
+!internal
+!internal/**
+**/*_test.go
 !web
 web/**
 !web/package*.json
