@@ -1,14 +1,15 @@
-# The stock v2.11.9 release does not yet provide the WebTransport reverse proxy.
+# Pin the upstream WebTransport reverse proxy implementation.
 FROM golang:1.26.10-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473 AS build
 ARG CADDY_REV=9ea3108377d2abec102866808133c40ac9582162
 RUN CGO_ENABLED=0 GOBIN=/out go install -trimpath \
     -ldflags="-X github.com/caddyserver/caddy/v2.CustomVersion=$CADDY_REV" \
     github.com/caddyserver/caddy/v2/cmd/caddy@$CADDY_REV
-RUN mkdir -p /storage/data /storage/config
+RUN mkdir -p /storage/data /storage/config && cp /go/pkg/mod/github.com/caddyserver/caddy/v2@*/LICENSE /out/CADDY-LICENSE
 
 FROM scratch
 ENV XDG_CONFIG_HOME=/config XDG_DATA_HOME=/data PATH=/usr/bin
 COPY --from=build /out/caddy /usr/bin/caddy
+COPY --from=build /out/CADDY-LICENSE /usr/share/licenses/caddy/LICENSE
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build --chown=65532:65532 /storage/ /
 COPY Caddyfile /etc/caddy/Caddyfile
