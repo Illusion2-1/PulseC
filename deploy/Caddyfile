@@ -1,4 +1,6 @@
 {
+	# Give live chats a bounded drain before a proxy restart.
+	grace_period 5s
 	servers {
 		webtransport
 	}
