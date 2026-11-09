@@ -1,5 +1,6 @@
 .PHONY: build frontend install-web web-check go-check smoke test check tools security
 export PATH := $(CURDIR)/dist/tools:$(PATH)
+GOVULNDB ?= https://vuln.go.dev
 GO_BUILD := CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w"
 
 build: frontend
@@ -38,7 +39,7 @@ tools:
 
 security: frontend
 	go mod verify
-	govulncheck ./...
+	GOVERSION="$$(go env GOVERSION | sed 's/-X:.*$$//')" govulncheck -db "$(GOVULNDB)" ./...
 	cd web && npm audit --audit-level=high
 	cd qa && npm audit --package-lock-only --audit-level=high
 	gitleaks git --redact --no-banner --log-opts=--all .

@@ -1,0 +1,11 @@
+version: "2"
+linters:
+  default: standard
+  enable:
+    - gosec
+  exclusions:
+    rules:
+      # Only the loopback load generator replaces CA validation with a SHA-256 pin.
+      - path: ^cmd/pulsec-load/main\.go$
+        linters: [gosec]
+        text: "G402: TLS InsecureSkipVerify set to true"
