@@ -29,3 +29,31 @@ Dockerfile 固定两个构建阶段的多架构镜像索引。Node 22.23.1 bookw
 本机通过 Docker image inspect 和 save 检查了 Linux amd64 候选镜像。运行阶段基于 scratch，镜像的唯一文件系统层只含 0555 模式的 `/pulsec`，以 UID/GID 65532 运行，声明 8443/TCP 与 UDP。已验收文件打包所得镜像中，提取到的可执行文件与本地候选二进制的 SHA-256 相同。可用 `python3 tools/check-image.py 镜像名 [待对照二进制]` 复验。此检查覆盖最终运行层的文件清单和 Go 程序，构建镜像仍要按其各自的更新周期维护。
 
 CI 在每次 PR 校验 Compose 配置。定时和手动检查会分别从源码与现有二进制构建镜像，校验运行层，再通过 Compose 暴露的真实 TCP/UDP 端口，用两个浏览器客户端收发消息。命令见[CI 工作流](../.github/workflows/check.yml)与[发布验证](../qa/README.md)。
+
+## 剥离符号的发行文件
+
+对 RC1 的 `govulncheck -mode=binary` 输出有 12 项 “Symbol Results”。复核使用同一天的数据库、同一 Go 1.26.10 Fedora 工具链和 git 提交 `3bdbb1b53ef124cf74c99a94e45d97b7e388387a`。干净检出的常规构建与受测交付文件逐字节相同，SHA-256 为 `85291bac10b70af76d983d5b75bb886224e4ec5419b44ca86d2ece4f9113d80c`。仅去掉链接器的 `-s -w` 后再次编译，两个 ELF 的可执行代码段 `.text` 也逐字节相同，SHA-256 为 `aa60ef97124876cc8f8310fd923e78127b58c30aea4da932ef1537a3053de382`。
+
+govulncheck 1.9.0 从剥离符号的 ELF 只能提取构建元数据。此时它调用 `allKnownVulnerableSymbols`，把受影响模块公告里的符号列表用作保守估计。保留符号的中继实际得到 **0 个受影响符号、0 个受影响导入包、12 个模块级提示**，与源码扫描一致。[ELF 信息提取实现](https://github.com/golang/vuln/blob/v1.9.0/internal/buildinfo/additions_scan.go#L80-L95) · [二进制扫描回退实现](https://github.com/golang/vuln/blob/v1.9.0/internal/vulncheck/binary.go#L105-L120)
+
+| GO-2026 公告编号 | 发布程序对应的证据 |
+|---|---|
+| 6866、6860 | `go list -deps .` 与实际符号表均无 `golang.org/x/net/html` |
+| 6629 | 发布程序使用 x/text 的双向文本等子包，无 `golang.org/x/text/secure/precis` |
+| 6617、6612、6611、6610、6603 | 每条公告分别记录了标准库与外部 x/net 实现。Go 1.26 的 `net/http` 路径修复于 **1.26.9**，实际编译器是 **1.26.10**。符号表有标准库内置的 `net/http.http2…` 与 `golang.org/x/net/http2/hpack` 子包；受影响的外部包 `golang.org/x/net/http2` 本身没有进入发布程序。[Go 漏洞库示例](https://pkg.go.dev/vuln/GO-2026-6617) |
+| 6355、6354、6303 | 无 `golang.org/x/crypto/ssh` |
+| 5932 | 无 `golang.org/x/crypto/openpgp` 或其子包 |
+
+安装工具并按锁文件完成前端构建后，在同一份源码和静态资源上执行。两个扫描必须使用同一漏洞库 URL 或同一份文件快照。以下命令中的 GNU objcopy 用于复核 Linux ELF 的代码段。升级 Go、QUIC 模块、扫描器或改变导入关系时，应重新执行配对扫描。
+
+```sh
+make build
+CGO_ENABLED=0 go build -trimpath -buildvcs=false -o dist/pulsec-symbols .
+govulncheck -mode=binary -show=verbose dist/pulsec            # 此次保守输出 12 项
+govulncheck -mode=binary -show=verbose dist/pulsec-symbols    # 此次符号命中 0 项
+CGO_ENABLED=0 go list -deps .
+go tool nm dist/pulsec-symbols > dist/symbols.txt
+objcopy -O binary --only-section=.text dist/pulsec dist/relay.text
+objcopy -O binary --only-section=.text dist/pulsec-symbols dist/with-symbols.text
+cmp dist/relay.text dist/with-symbols.text
+```
