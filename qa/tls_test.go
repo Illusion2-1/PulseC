@@ -83,6 +83,7 @@ func TestProductionTLSRotation(t *testing.T) {
 		func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
+			// #nosec G204 -- the operator explicitly supplies the local release artifact under test.
 			proc := exec.CommandContext(ctx, bin, "-addr", addr, "-cert", cert, "-key", key)
 			proc.Dir = t.TempDir() // no static files and no Node installation on PATH
 			proc.Env = []string{"PATH=" + proc.Dir}

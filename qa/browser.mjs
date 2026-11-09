@@ -46,7 +46,7 @@ async function page(name, locale = "en", endpoint = base + 1, width = 960) {
   p.setDefaultTimeout(20000);
   await p.goto(origin(endpoint) + "/?ch=qa");
   await p.locator("#nick").fill(name);
-  await p.locator(".go").click();
+  await p.locator("form .go").click();
   return p;
 }
 async function send(p, msg) {
@@ -111,9 +111,9 @@ try {
   // The page remains reachable when only UDP is blocked.
   const noUDP = await browser.newPage({locale: "en"});
   await noUDP.goto(origin(base + 2));
-  await noUDP.locator(".go").waitFor();
+  await noUDP.locator("form .go").waitFor();
   await (process.env.QA_LEGACY_UI ? noUDP.locator(".head").getByText(/断线/) : noUDP.locator(".net-hint")).first().waitFor({timeout: 45000});
-  assert(await noUDP.locator(".go").isDisabled());
+  assert(await noUDP.locator("form .go").isDisabled());
   assert.equal(await noUDP.locator(".u").count(), 0);
   assert.deepEqual(errors, []);
   console.log("PASS blocked UDP and no unhandled page errors");
