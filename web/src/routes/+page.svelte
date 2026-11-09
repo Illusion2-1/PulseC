@@ -7,11 +7,16 @@
     applyMember,
     deliveryUnknown,
     tripPattern,
+    names,
+    nicks,
   } from "$lib/session.js";
   import { t, clock, loadLanguage } from "$lib/locale.js";
-  import { displayEvent } from "$lib/messages.js";
   import LanguagePicker from "$lib/LanguagePicker.svelte";
-  import Body from "$lib/Body.svelte";
+  import Entrance from "$lib/Entrance.svelte";
+  import MemberList from "$lib/MemberList.svelte";
+  import MessageList from "$lib/MessageList.svelte";
+  import Composer from "$lib/Composer.svelte";
+  import { spark } from "$lib/format.js";
   import { connect } from "$lib/link.js";
   import "$lib/style.css";
 
@@ -21,10 +26,7 @@
     directory = [],
     total = 0,
     uptime = 0;
-  let nick = "",
-    password = "",
-    channel = "",
-    publish = false,
+  let channel = "",
     error = null,
     identity = null,
     current = "",
@@ -42,95 +44,21 @@
     sent = [],
     rtt = null;
   let draft = "",
-    area,
+    composer,
     log,
     showUsers = false,
     below = 0,
-    lastInput = "",
-    selection = 0,
-    dismissed = false;
+    lastInput = "";
   let firstUnread,
     unreadCount = 0;
   let cacheError = "",
     foundDirectory = false;
-  const names = /^[\p{L}\p{N}_-]{1,24}$/u,
-    nicks = /^[\p{L}\p{N}_-]{1,16}$/u;
-  const commands = [
-    "/join",
-    "/leave",
-    "/nick",
-    "/me",
-    "/w",
-    "/topic",
-    "/users",
-    "/clear",
-    "/help",
-    "/cancel",
-    "/ignore",
-    "/unignore",
-    "/forget",
-  ];
   const blank = { users: [], pulse: Array(30).fill(0), topic: "" };
-  const hex = (b) =>
-    Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join(
-      "",
-    );
-  const hash = async (s) =>
-    hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
-  const color = (t) => "t" + (parseInt(t.slice(0, 2), 16) % 8);
-  const spark = (a) =>
-    a.map((x) => "▁▂▃▄▅▆▇█"[Math.round((x / Math.max(1, ...a)) * 7)]).join("");
-  async function credential(password) {
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"],
-    );
-    return hex(
-      await crypto.subtle.deriveBits(
-        {
-          name: "PBKDF2",
-          hash: "SHA-256",
-          salt: enc.encode("PulseC trip v1/" + location.origin),
-          iterations: 310000,
-        },
-        key,
-        256,
-      ),
-    );
-  }
-  let preview = "",
-    previewSeq = 0,
-    entering = false;
-  async function previewTrip(p) {
-    let seq = ++previewSeq;
-    if (p) {
-      await new Promise((r) => setTimeout(r, 250));
-      if (seq !== previewSeq) return;
-    }
-    const val = p
-      ? (await hash("PulseC trip v1/" + (await credential(p)))).slice(0, 16)
-      : "";
-    if (seq === previewSeq) preview = val;
-  }
-  $: previewTrip(password);
   $: state = states[current] || blank;
   $: items = (logs[current] || []).filter(
     (m) => !m.trip || !ignored.includes(m.trip),
   );
   $: left = Math.max(0, 6 - sent.filter((t) => now - t < 10000).length);
-  $: suggestions = dismissed
-    ? []
-    : draft.match(/^\/\S*$/)
-      ? commands.filter((x) => x.startsWith(draft))
-      : draft.match(/@[\p{L}\p{N}_-]*$/u)
-        ? state.users
-            .filter((u) => u.nick.startsWith(draft.split("@").pop()))
-            .map((u) => "@" + u.nick + "#" + u.trip)
-        : [];
   function forget() {
     if (!window.confirm($t("forgetConfirm"))) return;
     try {
@@ -398,29 +326,7 @@
       }
     }
   }
-  async function enter() {
-    error = null;
-    const n = nick.trim() || "anon",
-      name = channel.trim() || "lobby";
-    if (!nicks.test(n) || !names.test(name)) {
-      error = { code: "invalidEntry" };
-      return;
-    }
-    if (status !== "connected") {
-      error = { code: status };
-      return;
-    }
-    if (entering) return;
-    entering = true;
-    const proof = password
-      ? await credential(password)
-      : hex(crypto.getRandomValues(new Uint8Array(32)));
-    entering = false;
-    if (status !== "connected") {
-      error = { code: status };
-      return;
-    }
-    password = "";
+  function enter(n, proof, name, publish) {
     identity = { nick: n, proof, trip: "" };
     link.send({ op: "identity", rosterDelta: true, nick: n, proof });
     join(name, publish);
@@ -436,7 +342,7 @@
     below = 0;
     save();
     bottom();
-    tick().then(() => area?.focus());
+    tick().then(() => composer?.focus());
   }
   function join(name, pub = false) {
     if (!names.test(name)) return notice("invalid_room");
@@ -463,7 +369,6 @@
     rooms = rooms;
     const next = Object.keys(rooms)[0];
     if (next) return select(next);
-    nick = identity?.nick || "";
     identity = null;
     current = "";
     save();
@@ -596,56 +501,8 @@
     save();
     flush();
   }
-  function insert(s) {
-    draft += s;
-    dismissed = false;
-    tick().then(() => area?.focus());
-  }
-  function pick(s) {
-    draft = s.startsWith("@")
-      ? draft.replace(/@[^\s]*$/, s.split("#")[0] + " ")
-      : s + " ";
-    dismissed = true;
-    area?.focus();
-  }
-  function keys(e) {
-    if (e.isComposing || e.keyCode === 229) return;
-    if (e.key === "Escape") {
-      dismissed = true;
-      bottom();
-      return;
-    }
-    if (suggestions.length && ["ArrowDown", "ArrowUp"].includes(e.key)) {
-      e.preventDefault();
-      selection =
-        (selection +
-          (e.key === "ArrowDown" ? 1 : -1) +
-          Math.min(suggestions.length, 9)) %
-        Math.min(suggestions.length, 9);
-      return;
-    }
-    if (e.key === "Tab" && suggestions.length) {
-      e.preventDefault();
-      return pick(suggestions[selection] || suggestions[0]);
-    }
-    if (e.key === "Tab") {
-      const word = draft.match(/[\p{L}\p{N}_-]+$/u);
-      const u = word && state.users.find((u) => u.nick.startsWith(word[0]));
-      if (u) {
-        e.preventDefault();
-        draft = draft.slice(0, -word[0].length) + "@" + u.nick + " ";
-        return;
-      }
-    }
-    if (e.key === "ArrowUp" && !draft) {
-      e.preventDefault();
-      draft = lastInput;
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+  function insert(text) {
+    composer?.insert(text);
   }
   function jump(ref) {
     const el = document.getElementById("m-" + ref);
@@ -662,9 +519,6 @@
       }
     }
   }
-  function clash(n, t, users) {
-    return users.some((u) => u.nick === n && u.trip !== t);
-  }
 </script>
 
 <svelte:head
@@ -674,122 +528,20 @@
 >
 <svelte:window on:keydown={hotkey} />
 {#if !current}
-  <header class="bar head">
-    <span class="amb">PulseC</span><span class="grow"
-      >WebTransport / HTTP·3</span
-    ><LanguagePicker /><span role="status">{$t(status)}</span><time
-      >{$clock(now)}</time
-    >
-  </header>
-  <main class="gate">
-    <p class="intro"><span class="mark">PulseC</span> {$t("intro")}</p>
-    <p>
-      {$t("privacy")}
-    </p>
-    <p class="dim">
-      {$t("stats", {
-        minutes: Math.floor(uptime / 60),
-        online: foundDirectory ? total : "—",
-      })}
-    </p>
-    {#if status === "reconnecting"}<p role="status" class="net-hint">
-        {$t("offlineHint")}
-      </p>{/if}
-    <h2>{$t("publicRooms")}</h2>
-    <table class="chan">
-      <colgroup
-        ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
-        /></colgroup
-      ><thead
-        ><tr
-          ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
-            >{$t("pulse")}</th
-          ><th>{$t("topic")}</th></tr
-        ></thead
-      ><tbody>
-        {#each directory.filter((r) => r.public) as r}<tr
-            class:sel={r.name === channel}
-            ><td
-              ><button on:click={() => (channel = r.name)}>{r.name}</button></td
-            ><td>{r.online}</td><td class="pulse hide-s">{spark(r.pulse)}</td
-            ><td class="topic">{r.topic || "—"}</td></tr
-          >{:else}<tr
-            ><td colspan="4" class="mid"
-              >{foundDirectory ? $t("noPublic") : $t(status)}</td
-            ></tr
-          >{/each}</tbody
-      >
-    </table>
-    <h2>{$t("knownRooms")}</h2>
-    {#if known.length}<table class="chan">
-        <colgroup
-          ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
-          /></colgroup
-        ><thead
-          ><tr
-            ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
-              >{$t("pulse")}</th
-            ><th>{$t("topic")}</th></tr
-          ></thead
-        ><tbody>
-          {#each known as n}{@const r = directory.find((r) => r.name === n)}<tr
-              class:sel={n === channel}
-              ><td><button on:click={() => (channel = n)}>{n}</button></td><td
-                >{foundDirectory ? r?.online || 0 : "—"}</td
-              ><td class="pulse hide-s">{r ? spark(r.pulse) : "—"}</td><td
-                class="topic">{r?.topic || "—"}</td
-              ></tr
-            >{/each}</tbody
-        >
-      </table>{:else}<p>{$t("noKnown")}</p>{/if}
-    <h2>{$t("join")}</h2>
-    <form on:submit|preventDefault={enter} autocomplete="off">
-      <div class="field">
-        <label for="nick">{$t("nick")}</label><input
-          id="nick"
-          bind:value={nick}
-          maxlength="16"
-          placeholder="anon"
-        />
-      </div>
-      <div class="field">
-        <label for="pass">{$t("password")}</label><input
-          id="pass"
-          type="password"
-          bind:value={password}
-          maxlength="256"
-          placeholder={$t("passwordHint")}
-        /><span class="hint">trip {preview || "— · " + $t("temporary")}</span>
-      </div>
-      <div class="field">
-        <label for="ch">{$t("channel")}</label><input
-          id="ch"
-          bind:value={channel}
-          maxlength="24"
-          placeholder="lobby"
-        />
-      </div>
-      <label class="settings"
-        ><input type="checkbox" bind:checked={publish} />{$t("publish")}</label
-      >
-      <div class="err" role="status">
-        {error ? displayEvent($t, error) : $t(cacheError)}
-      </div>
-      <button class="go" disabled={entering || status !== "connected"}
-        >» {$t("join")} #{channel.trim() || "lobby"} <kbd>⏎</kbd></button
-      >
-    </form>
-    <button class="forget" data-action="forget" on:click={forget}
-      >{$t("forget")}</button
-    >
-    <h2>{$t("about")}</h2>
-    <p>
-      {$t("identityInfo")}
-    </p>
-    <p>
-      {$t("limitInfo")}
-    </p>
-  </main>
+  <Entrance
+    bind:channel
+    bind:error
+    {now}
+    {foundDirectory}
+    {status}
+    {directory}
+    {total}
+    {uptime}
+    {known}
+    {cacheError}
+    {forget}
+    onEnter={enter}
+  />
 {:else}
   <div class="app" class:show-users={showUsers}>
     <header class="bar head">
@@ -815,112 +567,28 @@
         >/join</button
       >
     </nav>
-    <div
-      class="log"
-      role="log"
-      bind:this={log}
-      on:scroll={() => {
-        if (log.scrollHeight - log.scrollTop - log.clientHeight < 40) below = 0;
-      }}
-    >
-      {#each items as m, i}
-        {@const prev = items[i - 1]}
-        {#if m === firstUnread}<div class="div">
-            {$t("unread", { count: unreadCount })}
-          </div>{/if}
-        {#if !prev || m.time - prev.time > 300000}<div class="div tick">
-            {$clock(m.time)}
-          </div>{/if}
-        <div
-          id={m.ref ? "m-" + m.ref : undefined}
-          class="ln"
-          class:sys={m.kind === "sys" || m.kind === "presence"}
-          class:join={m.kind === "presence"}
-          class:act={m.kind === "me"}
-          class:whis={m.kind === "whisper"}
-          class:cont={prev &&
-            m.kind === "chat" &&
-            prev.kind === "chat" &&
-            prev.trip === m.trip &&
-            prev.nick === m.nick &&
-            m.time - prev.time < 120000}
-          class:men={m.trip !== identity.trip &&
-            (m.kind === "whisper" || m.text.includes("@" + identity.nick))}
-          class:self={m.trip === identity.trip}
-        >
-          <button
-            class="tm"
-            title={m.ref}
-            on:click={() => m.ref && insert(">>" + m.ref + " ")}
-            ><span class="hm">{$clock(m.time)}</span><span class="id"
-              >»{$t("quote")}</span
-            ></button
-          >
-          <button
-            class="tr"
-            title={m.trip}
-            on:click={() => m.ref && insert(">>" + m.ref + " ")}
-            >{m.trip?.slice(0, 5) || ""}</button
-          >
-          <button
-            class={"nk " + (m.trip ? color(m.trip) : "")}
-            class:clash={clash(m.nick, m.trip, state.users)}
-            title={m.nick ? m.nick + "#" + m.trip : ""}
-            on:click={() => m.nick && insert("@" + m.nick + " ")}
-            >{m.nick || (m.kind === "presence" ? "±" : "--")}</button
-          >
-          <span class="tx"
-            >{m.kind === "whisper"
-              ? "→ " + m.to + "："
-              : m.kind === "me"
-                ? "* "
-                : ""}<Body
-              text={m.kind === "sys" || m.kind === "presence"
-                ? displayEvent($t, m)
-                : m.text}
-              {jump}
-            /></span
-          >
-        </div>
-      {:else}<p class="empty">#{current} · {$t("empty")}</p>{/each}
-      {#each queue.filter((q) => q.room === current) as q}<div class="ln pend">
-          <span class="tm">…</span><span></span><span class="nk"
-            >{$t(q.id === inflight ? "sending" : "queued")}</span
-          ><span class="tx">{q.raw}</span>
-        </div>{/each}
-      {#if below}<button class="below on" on:click={bottom}
-          >↓ {$t(below === 1 ? "newMessage" : "newMessages", {
-            count: below,
-          })}</button
-        >{/if}
-    </div>
-    <aside class="users">
-      <h3>{$t("online")} <span>{state.users.length}</span></h3>
-      {#each [false, true] as idle}{@const group = state.users
-          .filter((u) => now / 1000 - u.active >= 600 === idle)
-          .sort((a, b) => a.nick.localeCompare(b.nick))}
-        {#if group.length}<div class="grp">
-            {$t(idle ? "idle" : "active")}
-            {group.length}
-          </div>{/if}
-        {#each group as u}<button
-            class="u"
-            class:idle
-            class:me={u.trip === identity.trip && u.nick === identity.nick}
-            title={u.nick + "#" + u.trip}
-            on:click={() => {
-              insert("@" + u.nick + " ");
-              showUsers = false;
-            }}
-            ><span
-              class={"nm " + color(u.trip)}
-              class:clash={clash(u.nick, u.trip, state.users)}>{u.nick}</span
-            ><span class="tr">{u.trip}</span></button
-          >{/each}{/each}
-      <button class="utog" on:click={() => (showUsers = false)}
-        >{$t("close")}</button
-      >
-    </aside>
+    <MessageList
+      bind:log
+      bind:below
+      {queue}
+      {current}
+      {inflight}
+      {items}
+      {firstUnread}
+      {unreadCount}
+      {identity}
+      users={state.users}
+      {jump}
+      {insert}
+      {bottom}
+    />
+    <MemberList
+      users={state.users}
+      {identity}
+      {now}
+      {insert}
+      close={() => (showUsers = false)}
+    />
     <div class="bar stat" class:off={status !== "connected"}>
       <span
         role="status"
@@ -933,46 +601,17 @@
         >{$t(cacheError) || $t("cacheCount", { count: items.length })}</span
       ><span>{rtt === null ? "—" : rtt + " ms"}</span>
     </div>
-    <div class="input" class:throt={now < until}>
-      <span class="ps"
-        >{identity.nick}<small class="dim">#{identity.trip?.slice(0, 5)}</small>
-        <span class="amb">›</span></span
-      >
-      <textarea
-        aria-label={$t("message")}
-        rows="1"
-        bind:this={area}
-        bind:value={draft}
-        on:keydown={keys}
-        on:input={() => {
-          selection = 0;
-          dismissed = false;
-        }}
-        placeholder={$t("draftHint")}></textarea>
-      <span class="meta"
-        ><span class="wide">{[...draft].length}/2000 </span><span class="meter"
-          >{now < until
-            ? $t("cooldown", { seconds: Math.ceil((until - now) / 1000) })
-            : "▮".repeat(left) + "▯".repeat(6 - left)}</span
-        ></span
-      >
-      {#if suggestions.length}<div class="pop on">
-          {#each suggestions.slice(0, 9) as s, i}<button
-              class:sel={selection === i}
-              on:click={() => pick(s)}>{s}</button
-            >{/each}
-        </div>{/if}
-    </div>
-    <div class="bar keys">
-      <span class="kb"
-        ><kbd>⏎</kbd>{$t("send")} <kbd>⇧⏎</kbd>{$t("newline")}
-        <kbd>Tab</kbd>{$t("complete")}
-        <kbd>↑</kbd>{$t("last")} <kbd>Alt+1–9</kbd>{$t("switch")}
-        <kbd>Esc</kbd>{$t("bottom")}</span
-      >{#each ["/", "@", ">>", "```\n\n```", "/me ", "/w "] as s}<button
-          class="tok"
-          on:click={() => insert(s)}>{s.trim()}</button
-        >{/each}<button class="tok" on:click={send}>{$t("send")}</button>
-    </div>
+    <Composer
+      bind:this={composer}
+      bind:draft
+      users={state.users}
+      {identity}
+      {until}
+      {now}
+      {left}
+      {lastInput}
+      {bottom}
+      {send}
+    />
   </div>
 {/if}

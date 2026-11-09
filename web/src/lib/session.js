@@ -34,3 +34,6 @@ export function deliveryUnknown(message, boot, now) {
 }
 
 export const tripPattern = /^[a-f0-9]{16}$/;
+
+export const names = /^[\p{L}\p{N}_-]{1,24}$/u;
+export const nicks = /^[\p{L}\p{N}_-]{1,16}$/u;
