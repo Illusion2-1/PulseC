@@ -1,5 +1,9 @@
 **
 !Dockerfile
+!LICENSE
+!scripts
+scripts/**
+!scripts/go-notices.py
 !go.mod
 !go.sum
 !/*.go
@@ -12,8 +16,6 @@ web/**
 !web/*.config.js
 !web/src
 !web/src/**
-!web/static
-!web/static/**
 !dist
 dist/**
 !dist/release

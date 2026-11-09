@@ -8,6 +8,8 @@ build: frontend
 
 frontend: install-web
 	cd web && npm run build
+	cp LICENSE web/build/LICENSE.txt
+	python3 scripts/go-notices.py > web/build/THIRD-PARTY-Go.txt
 
 install-web:
 	cd web && npm ci --no-audit --no-fund

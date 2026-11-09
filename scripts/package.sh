@@ -23,8 +23,7 @@ cp deploy/pulsec.service "$work/$name/deploy/"
 cp docs/operations.md "$work/$name/README.md"
 printf '%s\n' "$rev" > "$work/$name/SOURCE_COMMIT"
 go version -m dist/pulsec | sed '1s/^dist\///' > "$work/$name/GO-BUILD.txt"
-python3 scripts/go-notices.py > "$work/go-notices.txt"
-cmp "$work/go-notices.txt" web/build/THIRD-PARTY-Go.txt
+test -s web/build/THIRD-PARTY-Go.txt
 cmp LICENSE web/build/LICENSE.txt
 test -s web/build/THIRD-PARTY-Web.txt
 # GNU tar and gzip with stable member ordering, permissions, timestamps and headers.

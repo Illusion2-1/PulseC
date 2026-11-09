@@ -15,6 +15,9 @@ RUN go mod download
 COPY *.go ./
 COPY internal/ ./internal/
 COPY --from=ui /src/web/build ./web/build
+COPY LICENSE ./web/build/LICENSE.txt
+COPY scripts/go-notices.py ./scripts/go-notices.py
+RUN python3 scripts/go-notices.py > web/build/THIRD-PARTY-Go.txt
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/pulsec .
 
 FROM scratch AS runtime
