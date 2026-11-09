@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from "svelte";
   import { readRows, appendRow, clearRows } from "$lib/history.js";
+  import { forgetChatData, readSaved, applyMember, deliveryUnknown, tripPattern } from "$lib/session.js";
   import Body from "$lib/Body.svelte";
   import { connect } from "$lib/link.js";
   import "$lib/style.css";
@@ -18,7 +19,8 @@
     error = "",
     identity = null,
     current = "",
-    known = [];
+    known = [],
+    ignored = [];
   let rooms = Object.create(null),
     states = Object.create(null),
     logs = Object.create(null),
@@ -55,6 +57,9 @@
     "/clear",
     "/help",
     "/cancel",
+    "/ignore",
+    "/unignore",
+    "/forget",
   ];
   const blank = { users: [], pulse: Array(30).fill(0), topic: "" };
   const hex = (b) =>
@@ -106,7 +111,7 @@
   }
   $: previewTrip(password);
   $: state = states[current] || blank;
-  $: items = logs[current] || [];
+  $: items = (logs[current] || []).filter((m) => !m.trip || !ignored.includes(m.trip));
   $: left = Math.max(0, 6 - sent.filter((t) => now - t < 10000).length);
   $: suggestions = dismissed
     ? []
@@ -117,18 +122,22 @@
             .filter((u) => u.nick.startsWith(draft.split("@").pop()))
             .map((u) => "@" + u.nick + "#" + u.trip)
         : [];
-  function read(store, key, fallback) {
+  function forget() {
+    if (!window.confirm("清除本标签页的身份、记录、忽略列表、待发消息和本机已知频道？此操作无法撤销。")) return;
     try {
-      return JSON.parse(store.getItem(key)) ?? fallback;
+      forgetChatData(sessionStorage, localStorage);
     } catch {
-      return fallback;
+      notice("浏览器未允许完整清除本地数据，请在浏览器设置中清理。");
+      return;
     }
+    link?.close();
+    location.replace(location.pathname);
   }
   function save() {
     try {
       sessionStorage.setItem(
         "pulsec.session",
-        JSON.stringify({ identity, current, rooms, queue }),
+        JSON.stringify({ identity, current, rooms, queue, ignored }),
       );
     } catch {
       cacheError = "会话存储不可用；刷新可能丢失本地状态";
@@ -164,12 +173,13 @@
     else link.send({ op: "ping", id: String(Date.now()) });
   }
   onMount(() => {
-    const saved = read(sessionStorage, "pulsec.session", {});
+    const saved = readSaved(sessionStorage, "pulsec.session", {});
     identity = saved.identity;
     current = saved.current || "";
     rooms = Object.assign(Object.create(null), saved.rooms);
     queue = saved.queue || [];
-    known = read(localStorage, "pulsec.channels", []);
+    ignored = Array.isArray(saved.ignored) ? saved.ignored.filter((trip) => tripPattern.test(trip)) : [];
+    known = readSaved(localStorage, "pulsec.channels", []);
     for (const name of Object.keys(rooms)) restore(name);
     channel = new URLSearchParams(location.search).get("ch") || "";
     link = connect({
@@ -273,10 +283,7 @@
       case "member": {
         const state = states[e.room];
         if (!state) break;
-        let users;
-        if (e.action === "join") users = [...state.users, e.user];
-        else if (e.action === "leave") users = state.users.filter(u => u.id !== e.user.id);
-        else users = state.users.map(u => u.id === e.user.id ? e.user : u);
+        const users = applyMember(state.users, e.action, e.user);
         states[e.room] = {...state, users};
         if (e.text) add(e.room, {kind: "presence", text: e.text, time: Date.now()});
         break;
@@ -286,7 +293,7 @@
           add(e.room, { kind: "presence", text: e.text, time: Date.now() });
         break;
       case "message":
-        if (Object.hasOwn(rooms, e.room)) {
+        if (Object.hasOwn(rooms, e.room) && !ignored.includes(e.trip)) {
           add(e.room, e);
           const st = states[e.room];
           if (st)
@@ -423,7 +430,7 @@
       !identity?.trip
     )
       return;
-    if (m.attempt && (Date.now() - m.attempt > 120000 || m.boot !== bootID)) {
+    if (deliveryUnknown(m, bootID, Date.now())) {
       queue = queue.slice(1);
       notice("无法确认是否送达，请核对后手动重发：" + m.raw, m.room);
       save();
@@ -462,6 +469,24 @@
           if (!nicks.test(arg) || status !== "已连接")
             return notice("请连接后指定有效昵称");
           return link.send({ op: "nick", nick: arg });
+        case "/ignore":
+        case "/unignore": {
+          const trip = arg.split("#").at(-1);
+          if (!tripPattern.test(trip) || trip === identity.trip)
+            return notice("请输入对方的 16 位完整 trip");
+          if (cmd === "/ignore") {
+            if (ignored.length >= 100 && !ignored.includes(trip)) return notice("忽略列表已满");
+            ignored = [...new Set([...ignored, trip])];
+            notice("已忽略该 trip 的消息");
+          } else {
+            ignored = ignored.filter((id) => id !== trip);
+            notice("已取消忽略");
+          }
+          save();
+          return;
+        }
+        case "/forget":
+          return forget();
         case "/users":
           return notice(
             state.users.map((u) => u.nick + "#" + u.trip).join("  "),
@@ -472,7 +497,7 @@
           return;
         case "/help":
           return notice(
-            "/join 频道 · /leave · /nick 新名 · /topic 主题\n/me 动作 · /w 昵称#trip 消息 · /users · /clear · /cancel\n以 // 发送开头的斜杠。点击时间引用，点击昵称提及。",
+            "/join 频道 · /leave · /nick 新名 · /topic 主题\n/me 动作 · /w 昵称#trip 消息 · /users · /clear · /cancel\n/ignore 完整trip · /unignore 完整trip · /forget 清除本地数据\n以 // 发送开头的斜杠。点击时间引用，点击昵称提及。",
           );
         case "/w": {
           const match = arg.match(/^(\S+)\s+([\s\S]+)/);
@@ -700,6 +725,7 @@
         >» 接入 #{channel.trim() || "lobby"} <kbd>⏎</kbd></button
       >
     </form>
+    <button class="go" data-action="forget" on:click={forget}>清除本地聊天数据</button>
     <h2>须知</h2>
     <p>
       密码在本机派生身份凭据。同名不同 trip 以 <span class="red">≠</span> 标记。
