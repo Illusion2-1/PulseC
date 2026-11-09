@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func events(t *testing.T, p *Peer) []event {
 func TestRelayDelivery(t *testing.T) {
 	h := NewHub(128)
 	join := func(n, cred string) *Peer {
-		p := &Peer{rooms: map[string]bool{}, send: make(chan []byte, 64), stop: make(chan struct{})}
+		p := NewPeer(netip.Addr{})
 		h.Handle(p, protocol.Command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
 		h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
@@ -111,7 +112,7 @@ func TestActivityWindow(t *testing.T) {
 func TestRosterAcrossProtocolVersions(t *testing.T) {
 	h := NewHub(128)
 	join := func(delta bool) *Peer {
-		p := &Peer{rooms: map[string]bool{}, send: make(chan []byte, 16), stop: make(chan struct{})}
+		p := NewPeer(netip.Addr{})
 		h.Handle(p, protocol.Command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
 		h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
@@ -170,7 +171,7 @@ func TestProtocolExamples(t *testing.T) {
 	}
 	h := NewHub(128)
 	for _, tc := range cases {
-		p := &Peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+		p := NewPeer(netip.Addr{})
 		if tc.Setup == "member" {
 			h.Handle(p, protocol.Command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
 			h.Handle(p, protocol.Command{Op: "join", Room: "room"})

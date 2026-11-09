@@ -12,7 +12,7 @@ import (
 
 func joinedPeer(t *testing.T, h *Hub, nick, proof string) *Peer {
 	t.Helper()
-	p := &Peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+	p := NewPeer(netip.Addr{})
 	h.Handle(p, protocol.Command{Op: "identity", Nick: nick, Proof: strings.Repeat(proof, 64), RosterDelta: true})
 	h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 	events(t, p)
@@ -20,8 +20,7 @@ func joinedPeer(t *testing.T, h *Hub, nick, proof string) *Peer {
 }
 
 func TestAddressAndTopicLimitsSurviveIdentityChanges(t *testing.T) {
-	h := NewHub(128)
-	h.sourceRate = 1
+	h := NewHub(1)
 	a := joinedPeer(t, h, "a", "a")
 	b := joinedPeer(t, h, "b", "b")
 	a.source = netip.MustParseAddr("192.0.2.1")
@@ -126,7 +125,7 @@ func FuzzUntrustedCommand(f *testing.F) {
 			return
 		}
 		h := NewHub(128)
-		p := &Peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+		p := NewPeer(netip.Addr{})
 		h.Handle(p, c)
 		if len(h.receipts) != 0 || len(h.rooms) != 0 {
 			t.Fatal("unidentified Peer created room or sent message")
