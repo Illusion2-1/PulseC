@@ -44,7 +44,10 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := server.Run(ctx, cfg, static, logger); err != nil {
+	reload := make(chan os.Signal, 1)
+	signal.Notify(reload, syscall.SIGHUP)
+	defer signal.Stop(reload)
+	if err := server.Run(ctx, cfg, static, logger, reload); err != nil {
 		logger.Fatal(err)
 	}
 }
