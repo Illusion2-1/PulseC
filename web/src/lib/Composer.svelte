@@ -1,6 +1,7 @@
 <script>
   import { t } from "./locale.js";
   import { tick } from "svelte";
+  export let confirmed;
   export let draft = "",
     users,
     identity,
@@ -110,7 +111,11 @@
     }}
     placeholder={$t("draftHint")}></textarea>
   <span class="meta"
-    ><span class="wide">{[...draft].length}/2000 </span><span class="meter"
+    >{#if confirmed}<span class="ack" role="status"
+        >✓ {$t("confirmed")}
+      </span>{/if}<span class="wide">{[...draft].length}/2000 </span><span
+      class="meter"
+      title={$t("remaining", { count: left })}
       >{now < until
         ? $t("cooldown", { seconds: Math.ceil((until - now) / 1000) })
         : "▮".repeat(left) + "▯".repeat(6 - left)}</span

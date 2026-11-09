@@ -96,7 +96,7 @@
   >
 </header>
 <main class="gate">
-  <p class="intro"><span class="mark">PulseC</span> {$t("intro")}</p>
+  <h1 class="intro"><span class="mark">PulseC</span> {$t("intro")}</h1>
   <p>
     {$t("privacy")}
   </p>
@@ -106,6 +106,9 @@
       online: foundDirectory ? total : "—",
     })}
   </p>
+  {#if status === "unsupported"}<p role="status" class="net-hint">
+      {$t(status)}
+    </p>{/if}
   {#if status === "reconnecting"}<p role="status" class="net-hint">
       {$t("offlineHint")}
     </p>{/if}

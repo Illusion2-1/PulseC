@@ -8,7 +8,7 @@
   <h3>{$t("online")} <span>{users.length}</span></h3>
   {#each [false, true] as idle}{@const group = users
       .filter((u) => now / 1000 - u.active >= 600 === idle)
-      .sort((a, b) => a.nick.localeCompare(b.nick))}
+      .sort((a, b) => a.nick.localeCompare(b.nick, $language))}
     {#if group.length}<div class="grp">
         {$t(idle ? "idle" : "active")}
         {group.length}

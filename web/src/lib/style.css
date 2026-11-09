@@ -9,8 +9,8 @@
   --bg-2:  #1a1a17;   /* 反选/选中行 */
   --rule:  #2a2a25;   /* 1px 分隔线 */
   --fg:    #c9c6bb;   /* 正文 */
-  --fg-1:  #8a877d;   /* 次要文字：系统消息 */
-  --fg-2:  #5a5850;   /* 元数据：时间、行号、提示 */
+  --fg-1:  #aca99d;   /* 次要文字：系统消息 */
+  --fg-2:  #918e83;   /* 元数据：时间、行号、提示 */
   --amber: #ffb000;   /* 唯一强调色：品牌/提到你/焦点/选中 */
   --red:   #ff5f4a;   /* 只用于错误、断线、冒名冲突 */
   --whis:  #c792ea;   /* 私聊专用 */
@@ -27,7 +27,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; background: var(--bg); color: var(--fg); }
 body {
-  font: 13px/var(--lh) var(--mono);
+  font: 14px/var(--lh) var(--mono);
   font-variant-ligatures: none;           /* 代码与哈希中禁止连字，避免误读 */
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
@@ -54,7 +54,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 /* 通用的单行条：页眉、状态栏都是它 */
 .bar {
   display: flex; gap: 2ch; align-items: center;
-  height: var(--lh); padding: 0 1ch;
+  min-height: var(--lh); padding: 0 1ch;
   white-space: nowrap; overflow: hidden;
 }
 .bar .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -120,7 +120,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .ln.warn .nk, .ln.warn .tx { color: var(--red); }
 .ln.act .tx { color: var(--fg-1); font-style: italic; }
 .ln.whis .nk, .ln.whis .tx { color: var(--whis); }
-.ln.pend { opacity: .45; }
+.ln.pend { color: var(--fg-1); }
 .ln.pend .tm::after { content: "…"; }
 
 /* 正文内联格式 */
@@ -158,7 +158,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .u .r  { color: var(--amber); }
 .u .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .u .tr { color: var(--fg-2); }
-.u.idle .nm { opacity: .45; }
+.u.idle .nm { color: var(--fg-2); }
 .u.me .nm::after { content: " ←"; color: var(--fg-2); }
 
 /* 状态栏 */
@@ -287,3 +287,37 @@ input[type=checkbox] {accent-color:var(--amber)}
 .known {display:flex;flex-wrap:wrap;gap:1ch}
 .known button {color:var(--fg-1);text-decoration:underline;text-underline-offset:3px}
 @media(max-width:720px){.chan col.c-n{width:11ch}.users{bottom:85px}.input .ps small {display:none}}
+
+.language { font: inherit; color: var(--fg); color-scheme: dark; background: var(--bg-1); border: 1px solid var(--rule); padding: 2px .5ch; }
+.head, .stat { min-height: 32px; }
+.gate .intro { font-size: 1.45em; font-weight: 600; line-height: 1.4; margin: 0 0 8px; }
+.gate .forget { margin-top: 12px; padding: 4px 0; color: var(--fg-1); text-decoration: underline; }
+.gate .net-hint { color: var(--red); margin-top: 8px; }
+.gate .go { background: var(--amber); color: var(--bg); text-align: center; min-height: 36px; }
+.field { padding-block: 7px; }
+.field input { min-width: 0; }
+.log button:disabled { opacity: 1; cursor: default; }
+.input:focus-within { border-top-color: var(--amber); }
+.ack { color: var(--fg-1); }
+.stat.off { flex-wrap: wrap; white-space: normal; }
+.stat .offline-detail { width: 100%; }
+:focus-visible { outline: 2px solid var(--amber); }
+@media (max-width: 720px) {
+  .head { gap: .75ch; }
+  .head time, .input .wide { display: none; }
+  .tab, .utog, .language, .tok { min-height: 32px; }
+  .stat { flex-wrap: wrap; gap: 0 1ch; }
+  .stat .pulse { font-size: 9px; }
+  .stat .rtt { margin-left: auto; }
+  .input { grid-template-columns: minmax(0, auto) minmax(4ch, 1fr) auto; }
+  .input .ps { overflow: hidden; text-overflow: ellipsis; max-width: 8ch; }
+  .ack { display: block; }
+  .users { max-width: 100%; top: 64px; }
+  .pop { min-width: 0; max-width: calc(100% - 2ch); }
+  .keys .tok { flex-shrink: 0; }
+}
+@media (max-width: 340px) {
+  .stat .pulse, .input .ps { display: none; }
+  .ln { grid-template-columns: 3ch 6ch minmax(0,1fr); }
+  .input { grid-template-columns: minmax(0,1fr) auto; }
+}

@@ -70,6 +70,14 @@ export const messages = {
   quote: ["引用", "Quote"],
   empty: ["此标签页尚未收到消息。", "No messages received in this tab yet."],
   queued: ["待发", "Queued"],
+  retryJoin: [
+    "请稍后输入 /join {room} 重新加入。",
+    "Try /join {room} again in a moment.",
+  ],
+  remaining: [
+    "本轮还可发送 {count} 条",
+    "{count} sends available in this window",
+  ],
   sending: ["发送中", "Sending"],
   confirmed: ["已确认", "Acknowledged"],
   newMessages: ["{count} 条新消息", "{count} new messages"],

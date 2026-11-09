@@ -54,6 +54,7 @@
     >
       <button
         class="tm"
+        disabled={!m.ref}
         title={m.ref}
         on:click={() => m.ref && insert(">>" + m.ref + " ")}
         ><span class="hm">{$clock(m.time)}</span><span class="id"
@@ -62,11 +63,13 @@
       >
       <button
         class="tr"
+        disabled={!m.ref}
         title={m.trip}
         on:click={() => m.ref && insert(">>" + m.ref + " ")}
         >{m.trip?.slice(0, 5) || ""}</button
       >
       <button
+        disabled={!m.nick}
         class={"nk " + (m.trip ? color(m.trip) : "")}
         class:clash={clash(m.nick, m.trip, users)}
         title={m.nick ? m.nick + "#" + m.trip : ""}

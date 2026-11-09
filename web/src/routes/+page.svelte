@@ -47,6 +47,8 @@
     composer,
     log,
     showUsers = false,
+    memberToggle,
+    acknowledged = Object.create(null),
     below = 0,
     lastInput = "";
   let firstUnread,
@@ -291,7 +293,9 @@
         break;
       case "ack": {
         const m = queue.find((q) => q.id === e.id);
-        if (m && m.kind !== "topic")
+        if (!m) break;
+        acknowledged[m.room] = Date.now();
+        if (m.kind !== "topic")
           add(m.room, {
             ...m,
             time: m.created,
@@ -306,10 +310,17 @@
         flush();
         break;
       }
-      case "limited":
+      case "limited": {
+        const m = queue.find((q) => q.id === e.id);
+        if (!m) break;
+        // The relay explicitly rejected this attempt. It is safe to cancel or retry.
+        delete m.attempt;
+        delete m.boot;
+        save();
         inflight = "";
         until = Date.now() + e.wait + 100;
         break;
+      }
       case "error": {
         const m = queue.find((q) => q.id === e.id);
         if (m) {
@@ -321,6 +332,9 @@
           });
           if (!draft && current === m.room) draft = m.raw;
           save();
+        } else if (e.request === "join" && Object.hasOwn(rooms, e.room)) {
+          notice(e.code, e.room, { text: e.text || $t("rejected") });
+          notice("retryJoin", e.room, { params: { room: e.room } });
         } else notice(e.code, current, { text: e.text || $t("rejected") });
         break;
       }
@@ -332,6 +346,10 @@
     join(name, publish);
   }
   function select(name) {
+    if (name === current) {
+      composer?.focus();
+      return;
+    }
     current = name;
     unreadCount = Math.min(unread[name] || 0, logs[name]?.length || 0);
     firstUnread = unreadCount ? logs[name].at(-unreadCount) : null;
@@ -351,8 +369,9 @@
       rooms[name] = pub;
       restore(name);
       remember(name);
-      link.send({ op: "join", room: name, public: pub });
     }
+    if (!joined.has(name))
+      link.send({ op: "join", room: name, public: rooms[name] });
     select(name);
   }
   function leave(all = false) {
@@ -416,7 +435,7 @@
         case "/leave":
           return leave();
         case "/cancel":
-          queue = queue.filter((q) => q.room !== current || q.id === inflight);
+          queue = queue.filter((q) => q.room !== current || q.attempt);
           save();
           return notice("canceled");
         case "/nick":
@@ -448,7 +467,11 @@
           });
         case "/clear":
           logs[current] = [];
-          clearRows(current);
+          try {
+            clearRows(current);
+          } catch {
+            cacheError = "cacheUnavailable";
+          }
           return;
         case "/help":
           return notice("help");
@@ -508,9 +531,28 @@
     const el = document.getElementById("m-" + ref);
     if (!el) return notice("missingRef");
     el.scrollIntoView({ block: "center" });
-    el.animate([{ background: "#453710" }, { background: "transparent" }], 900);
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
+      el.animate(
+        [{ background: "#453710" }, { background: "transparent" }],
+        900,
+      );
+  }
+  function closeMembers() {
+    showUsers = false;
+    memberToggle?.focus();
+  }
+  async function toggleMembers() {
+    showUsers = !showUsers;
+    if (showUsers) {
+      await tick();
+      document.querySelector("#members .utog")?.focus();
+    }
   }
   function hotkey(e) {
+    if (e.key === "Escape" && showUsers) {
+      closeMembers();
+      return;
+    }
     if (current && e.altKey && /^[1-9]$/.test(e.key)) {
       const n = Object.keys(rooms)[Number(e.key) - 1];
       if (n) {
@@ -543,7 +585,7 @@
     onEnter={enter}
   />
 {:else}
-  <div class="app" class:show-users={showUsers}>
+  <main class="app" class:show-users={showUsers}>
     <header class="bar head">
       <button class="brand" on:click={() => leave(true)} title={$t("leave")}
         >PulseC</button
@@ -552,10 +594,11 @@
         >{$clock(now)}</time
       >
     </header>
-    <nav class="tabs">
+    <nav class="tabs" aria-label={$t("channel")}>
       {#each Object.keys(rooms) as n, i}<button
           class="tab"
           class:act={n === current}
+          aria-current={n === current ? "page" : undefined}
           class:men={mentions[n]}
           on:click={() => select(n)}
           >{i + 1}:{n}{n === current
@@ -587,21 +630,31 @@
       {identity}
       {now}
       {insert}
-      close={() => (showUsers = false)}
+      close={closeMembers}
     />
     <div class="bar stat" class:off={status !== "connected"}>
       <span
         role="status"
         title={status === "reconnecting" ? $t("offlineHint") : undefined}
         >{$t(status)}</span
-      ><button on:click={() => (showUsers = !showUsers)}
+      ><span class="wide">{$t("members", { count: state.users.length })}</span
+      ><button
+        class="utog"
+        aria-expanded={showUsers}
+        aria-controls="members"
+        bind:this={memberToggle}
+        on:click={toggleMembers}
         >{$t("members", { count: state.users.length })}</button
       ><span class="pulse" title={$t("pulse")}>{spark(state.pulse)}</span><span
         class="grow"
         >{$t(cacheError) || $t("cacheCount", { count: items.length })}</span
-      ><span>{rtt === null ? "—" : rtt + " ms"}</span>
+      ><span class="rtt">{rtt === null ? "—" : rtt + " ms"}</span>
+      {#if status === "reconnecting"}<span class="offline-detail"
+          >{$t("offlineHint")}</span
+        >{/if}
     </div>
     <Composer
+      confirmed={now - (acknowledged[current] ?? 0) < 3500}
       bind:this={composer}
       bind:draft
       users={state.users}
@@ -613,5 +666,5 @@
       {bottom}
       {send}
     />
-  </div>
+  </main>
 {/if}
