@@ -1,0 +1,20 @@
+{
+	servers {
+		webtransport
+	}
+	# Request errors may contain addresses, URI queries and headers.
+	log {
+		exclude http.log.error
+	}
+}
+
+https://{$PULSEC_DOMAIN} {
+	reverse_proxy https://{$PULSEC_UPSTREAM:pulsec:8443} {
+		header_up Host {http.request.hostport}
+		transport http {
+			versions 3
+			tls_server_name {$PULSEC_UPSTREAM_NAME:pulsec.internal}
+			tls_trust_pool file {$PULSEC_UPSTREAM_CA:/etc/caddy/pulsec-origin.crt}
+		}
+	}
+}
