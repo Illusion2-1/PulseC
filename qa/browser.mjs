@@ -54,7 +54,10 @@ async function send(p, msg) {
   await area.fill(msg);
   await area.press("Enter");
 }
-const messages = (p) => p.locator(".ln:not(.sys) .tx");
+const messages = (p) => p.locator(".ln:not(.sys):not(.pend) .tx");
+async function drained(p) {
+  await p.waitForFunction(() => JSON.parse(sessionStorage.getItem("pulsec.session"))?.queue?.length === 0);
+}
 async function sees(p, text) {
   await messages(p).filter({hasText: text}).first().waitFor();
 }
@@ -72,6 +75,14 @@ try {
   for (let i = 0; i < 6; i++) await send(alice, "release-check-" + i);
   await sees(bob, "release-check-5");
   assert.deepEqual(await messages(bob).allTextContents(), Array.from({length: 6}, (_, i) => "release-check-" + i));
+  await drained(alice);
+  await alice.waitForFunction(() => document.querySelector(".meter")?.textContent.trim() === "▯▯▯▯▯▯");
+  await send(alice, "held-by-rate-limit");
+  assert.equal(await alice.locator("textarea").inputValue(), "held-by-rate-limit");
+  await alice.locator(".input.throt").waitFor();
+  assert.equal(await alice.locator(".pend").count(), 0);
+  await alice.locator("textarea").fill("");
+  console.log("PASS seventh message before cooldown stays in the draft");
   const late = await page("Late");
   await late.locator(".u").first().waitFor();
   await send(bob, "/w Alice private-probe");
@@ -97,17 +108,8 @@ try {
   await send(bob, "queued-while-offline");
   server = await relay(binary);
   await sees(bob, "queued-while-offline");
+  await drained(bob);
   assert.equal(await messages(bob).filter({hasText: "queued-while-offline"}).count(), 1);
-  if (process.env.ROLLBACK_BIN) {
-    await stop(server);
-    await alice.locator(".stat.off").waitFor({timeout: 70000});
-    server = await relay(resolve(process.env.ROLLBACK_BIN));
-    await alice.waitForFunction(() => document.querySelectorAll(".u").length === 3, null, {timeout: 65000});
-    // A fresh public message proves the old process accepted the already loaded new clients.
-    await send(alice, "after-rollback");
-    await sees(bob, "after-rollback");
-  }
-  console.log("PASS restart, offline queue" + (process.env.ROLLBACK_BIN ? ", rollback" : ""));
   // The page remains reachable when only UDP is blocked.
   const noUDP = await browser.newPage({locale: "en"});
   await noUDP.goto(origin(base + 2));
@@ -115,8 +117,26 @@ try {
   await (process.env.QA_LEGACY_UI ? noUDP.locator(".head").getByText(/断线/) : noUDP.locator(".net-hint")).first().waitFor({timeout: 45000});
   assert(await noUDP.locator("form .go").isDisabled());
   assert.equal(await noUDP.locator(".u").count(), 0);
+  await noUDP.close();
+  console.log("PASS candidate explains blocked UDP");
+  if (process.env.ROLLBACK_BIN) {
+    await stop(server);
+    await Promise.all([alice, bob].map(p => p.locator(".stat.off").waitFor({timeout: 70000})));
+    server = await relay(resolve(process.env.ROLLBACK_BIN));
+    // Old roster rows can remain visible offline. A rename visible to the other tab
+    // is a fresh barrier from the replacement process, unlike an old member count.
+    await bob.locator(".stat:not(.off)").waitFor({timeout: 65000});
+    await alice.locator(".stat:not(.off)").waitFor({timeout: 65000});
+    await send(bob, "/nick BackOnline");
+    await alice.locator('.u[title^="BackOnline#"]').waitFor({state: "attached", timeout: 65000});
+    // The six-message test can still occupy Alice's entire ten-second window.
+    await alice.waitForFunction(() => document.querySelector(".meter")?.textContent.includes("▮"));
+    await send(alice, "after-rollback");
+    assert.equal(await alice.locator("textarea").inputValue(), "", "Alice accepted the draft");
+    await Promise.all([sees(alice, "after-rollback"), sees(bob, "after-rollback"), drained(alice)]);
+  }
+  console.log("PASS restart, offline queue" + (process.env.ROLLBACK_BIN ? ", rollback" : ""));
   assert.deepEqual(errors, []);
-  console.log("PASS blocked UDP and no unhandled page errors");
 } finally {
   await browser?.close();
   for (const child of children.reverse()) await stop(child);
