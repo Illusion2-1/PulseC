@@ -145,8 +145,9 @@ func (h *hub) maintain(ctx context.Context, g *ingress, interval time.Duration, 
 		case <-stats:
 			h.Lock()
 			online, rooms, limited := len(h.peers), len(h.rooms), h.limited
+			receipts, trips, sources := len(h.receipts), len(h.limits), len(h.sources)
 			h.Unlock()
-			logger.Printf("stats sessions=%d online=%d rooms=%d admission_denied=%d protocol_failures=%d limited=%d slow_disconnects=%d", len(g.slots), online, rooms, g.denied.Load(), g.failures.Load(), limited, g.slow.Load())
+			logger.Printf("stats sessions=%d online=%d rooms=%d admission_denied=%d protocol_failures=%d limited=%d slow_disconnects=%d receipts=%d limit_trips=%d limit_sources=%d", len(g.slots), online, rooms, g.denied.Load(), g.failures.Load(), limited, g.slow.Load(), receipts, trips, sources)
 		}
 	}
 }
