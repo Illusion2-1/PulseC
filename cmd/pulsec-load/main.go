@@ -60,7 +60,7 @@ func run() (result, error) {
 	if err != nil {
 		return result{}, err
 	}
-	defer rsp.Body.Close()
+	defer func() { _ = rsp.Body.Close() }()
 	var conf struct{ Pin string }
 	if err = json.NewDecoder(rsp.Body).Decode(&conf); err != nil {
 		return result{}, err
@@ -244,7 +244,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	json.NewEncoder(os.Stdout).Encode(r)
+	if err := json.NewEncoder(os.Stdout).Encode(r); err != nil {
+		log.Fatal(err)
+	}
 	if r.Delivered != r.Expected || r.Invalid+r.Disconnects != 0 || r.Ack != r.Submitted {
 		os.Exit(1)
 	}
