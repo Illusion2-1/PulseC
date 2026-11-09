@@ -15,15 +15,12 @@ version=$(./dist/pulsec -version | cut -d' ' -f2)
 platform=$(go env GOOS)-$(go env GOARCH)
 name=pulsec-$version-$platform
 mkdir "$work/$name"
-cp dist/pulsec LICENSE CHANGELOG.md Dockerfile compose.yaml compose.local.yaml .dockerignore .env.example "$work/$name/"
+cp dist/pulsec LICENSE Dockerfile compose.yaml compose.local.yaml .dockerignore .env.example "$work/$name/"
 printf 'PULSEC_TARGET=artifact\nPULSEC_BINARY=pulsec\n' > "$work/$name/.env"
 cp web/build/THIRD-PARTY-*.txt "$work/$name/"
-mkdir -p "$work/$name/docs" "$work/$name/deploy" "$work/$name/qa"
-cp docs/operations.md docs/security-review.md docs/security-relay.md docs/release-rc1.md "$work/$name/docs/"
+mkdir -p "$work/$name/deploy"
 cp deploy/pulsec.service "$work/$name/deploy/"
-cp RELEASE.md "$work/$name/README.md"
-cp qa/README.md qa/churn.md qa/refactor-performance.md "$work/$name/qa/"
-cp -r qa/results "$work/$name/qa/"
+cp docs/operations.md "$work/$name/README.md"
 printf '%s\n' "$rev" > "$work/$name/SOURCE_COMMIT"
 go version -m dist/pulsec | sed '1s/^dist\///' > "$work/$name/GO-BUILD.txt"
 python3 scripts/go-notices.py > "$work/go-notices.txt"

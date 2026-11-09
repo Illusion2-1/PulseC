@@ -3,6 +3,8 @@
 /web/node_modules/
 /web/.svelte-kit/
 /web/build/
-*bench
+/bench/
+/qa/results/
+/ROADMAP.md
 /.env
 /certs/

@@ -1,39 +1,47 @@
-# 部署、验证与回退
+# 部署 PulseC
 
-首发支持范围：单个 Linux x86-64 进程，Go 二进制内含页面。使用支持 WebTransport 的浏览器；同源 TCP 提供 HTTPS，UDP 提供 HTTP/3/WebTransport。运行环境无需 Node、Go、数据库或额外资源目录。服务端能转发和读取正文，未提供端到端加密或 IP 匿名；不保留聊天历史。未列出频道可以被猜到。运营方应检查防火墙、反代、托管平台和崩溃收集器的实际日志策略。
+## 用 Docker Compose 运行
 
-## Docker Compose（推荐）
+源码目录默认构建前端和 Go 中继。二进制发行包的 `.env` 选择 `artifact`，Compose 直接使用包内的 Linux 可执行文件构建镜像。使用发行包前，在下载目录运行 `sha256sum --ignore-missing -c SHA256SUMS`，核对所选归档显示 OK。解压时保留隐藏文件。
 
-在源码目录或已解压的发布包目录运行 `docker compose`。源码默认走多阶段构建：Node 编译 Svelte 静态资源、Go 将资源嵌入中继、scratch 镜像只带二进制；两个构建基础镜像均固定清单摘要。发布包的 `.env` 会选择 `artifact`，构建时直接复制包内已验收的 Linux amd64 文件，不下载基础镜像或依赖。先核验包外的 SHA256SUMS；不要在非 amd64 主机上直接运行 amd64 产物，需要其他架构时从源码构建和验证。
+**Linux 本机试聊**使用回环监听和自动生成的短期证书。
 
-将证书和私钥复制到**专用**目录（不要直接指向系统的证书仓库或含其他域名私钥的目录）。让容器可读：默认进程 UID/GID 为 65532，`.env` 的 `PULSEC_TLS_GID` 可设为已有证书读取组的数值 GID；该组需要目录的遍历权限和两个文件的读权限。推荐目录 0750、私钥 0640。不需要给所有人读权限。Compose 将此目录只读挂载；在启用 SELinux 的 Docker 主机上，此专用目录会被标记为该容器私有。rootless 或配置了用户命名空间时，要确认映射后的宿主机组或 ACL 权限。
+```sh
+docker compose -f compose.yaml -f compose.local.yaml up -d --build
+```
 
-- **本机**：默认 `PULSEC_BIND_IP=127.0.0.1`、`PULSEC_PORT=8443`。容器使用 HTTPS 模式，不能用“跳过证书验证”的警告页替代有效证书。使用浏览器公有信任根签发的有效证书。仅在系统中安装私有 CA 并不保证浏览器接受 QUIC（[Chromium 说明](https://chromium.googlesource.com/website/+/refs/heads/main/site/quic/playing-with-quic/index.md)）。在 Linux 上可用 `docker compose -f compose.yaml -f compose.local.yaml up -d --build` 免证书试用；它使用 host 网络，取消端口映射和证书挂载，仅绑定宿主机回环地址，以 HTTP 加短期证书指纹接入。其他系统可直接运行本机对应架构的单文件。此覆盖配置仅用于开发。
-- **公网**：设置 `PULSEC_BIND_IP=0.0.0.0`、`PULSEC_PORT=443`、`PULSEC_CERT_DIR=/专用目录` 和 `PULSEC_TLS_GID`。同时开放宿主机的 TCP/UDP 443。容器仍在 8443 以非特权用户运行。不要把凭据写入镜像或提交 `.env`、`certs/`。
-- **启动**：`docker compose config -q && docker compose up -d --build`；用 `docker compose ps`、`docker compose logs --tail=10 pulsec` 和双浏览器聊天检查运行状态。容器使用只读根文件系统、移除 capabilities、禁止权限提升；日志是聚合计数，消息没有数据卷。
-- **升级/回退**：保留上一版本文件、镜像和原配置，给每版一个独立的 PULSEC_IMAGE 标签。跨版本目录使用相同的项目名（例如始终 `docker compose -p pulsec …`），防止第二个项目抢占端口。新版本目录用 `up -d --build`，如需回退，切回旧目录/镜像执行 `up -d --no-build --force-recreate`，然后执行下述旧标签页和新标签页验证。轮换同一目录内的证书和私钥后执行 `docker compose restart pulsec`；若挂载路径变了，使用 `up -d --force-recreate`。
+打开 <http://127.0.0.1:8443>。停止时运行同样的 `-f` 组合并把 `up -d --build` 换为 `down`。
 
-## 原生安装和首次上线
+**使用域名**时，将浏览器信任的证书链和对应私钥复制到专用目录，分别命名为 `fullchain.pem` 和 `privkey.pem`。在 `.env` 中设置以下变量，保留发行包已有的构建配置。
 
-1. 从可信发布渠道取得版本包和 SHA256SUMS，对照独立获取的摘要后运行 `sha256sum --ignore-missing -c SHA256SUMS` 并确认实际要用的文件显示 OK。未单独提供发行签名时，校验和不能证明来源。保存当前与上一版的完整目录，例如 `/opt/pulsec/0.1.0-rc.1/pulsec`；用 `pulsec -version` 识别产物。旧的 M0 尚无该参数，可用 SHA-256 识别。
-2. 将域名指向服务器，准备覆盖该域名的受信任完整证书链和私钥。让单独的系统用户 pulsec 仅能读取证书和私钥，私钥不要开放给其他用户；服务无需写入安装目录。示例使用非特权端口 8443，**TCP 和 UDP 的 8443 都要放通**。页面和 WebTransport 对外主机及端口必须相同。普通 HTTP 反代只能证明页面可访问，不能替中继接收 QUIC。
-3. 在版本目录外创建 `/opt/pulsec/current` 符号链接，指向选中的版本。可用[示例 systemd 单元](../deploy/pulsec.service)，核对证书路径后启用。也可由其他进程管理器执行同一命令：
-   ```sh
-   /opt/pulsec/current/pulsec -addr :8443 -cert /etc/pulsec/fullchain.pem -key /etc/pulsec/privkey.pem -stats-interval 1m
-   ```
-4. **上线前从实际外部网络验证**：先从两种网络环境访问 `https://域名:8443/config`，应得到空 pin 和启动标识；然后用两个浏览器加入随机的未列出频道，相互收发一条无敏感内容的探测消息。第三个迟入者不应看到前文。再测手机网络、UDP 被阻断时的反馈及重连。记录域名、版本、网络条件及通过/失败，不保留频道名、IP 或正文。本地弱网和 TLS 验收不能代替此步骤。
+| 变量 | 用途 |
+|---|---|
+| `PULSEC_BIND_IP` | 公网 IPv4 监听填 `0.0.0.0`。默认仅映射到宿主机回环。 |
+| `PULSEC_PORT` | 对外端口，例如 `443`。防火墙需同时开放该端口的 TCP 和 UDP。 |
+| `PULSEC_CERT_DIR` | 专用证书目录，在容器中只读挂载为 `/tls`。SELinux 主机会为此目录设置容器私有标签。 |
+| `PULSEC_TLS_GID` | 宿主机证书读权限对应的数值组 ID。该组需要遍历目录并读取两个文件。 |
 
-本机开发可直接运行 `./pulsec` 并打开 `http://127.0.0.1:8443`；不带证书只允许回环监听。不要把该开发入口转发到公网。
+```sh
+docker compose -p pulsec config -q
+docker compose -p pulsec up -d --build
+docker compose -p pulsec logs --tail=10 pulsec
+```
 
-## 运行中看什么
+通过证书对应的 HTTPS 域名访问。页面和 WebTransport 必须使用同一个对外主机和端口。用两个浏览器进入同一频道，互发消息验证整条路径。
 
-- `-stats-interval 1m` 启用聚合日志，默认关闭。关注当前连接和频道数、拒绝接入、限速、协议失败及慢接收端断开；结合服务进程 RSS 和主机 UDP 丢包趋势查问题。指标不提供正文、房名、IP 或身份标签。
-- `-max-sessions` 默认 1024。连接/握手洪泛先由服务和网络入口的有界配额保护。每个 trip 有发言额度；`-source-rate` 默认每来源 IP 每秒 128 条、允许短时突发，对换 trip 刷屏有效，但共享 NAT 下多人会共用预算。调整前先观察聚合拒绝计数。先处理临时限额和端侧忽略，再考虑有期限的边界侧措施；记录解除时间，不建立永久 IP/聊天档案。
-- 页面打不开先查 DNS、TCP 和证书链；页面能开但无法进房先查浏览器和 UDP，再查源站端口、Origin 与连接数拒绝。大量“结果未知”先查中继重启与网络中断，避免指导用户盲目重发。客户端本地记录不能恢复离线期间未曾收到的消息。
-- 不对公网启用 pprof、流量录制或正文日志。不要把 `sessionStorage`、trip proof、完整错误转储或实际聊天贴进工单。浏览器的清理入口只影响当前会话的数据，不能替其他成员删除其已接收的副本。
+## 直接运行单文件
 
-## 升级、证书轮换与回退
+`./pulsec` 启动本机回环模式。公网运行时指定证书和私钥：
 
-先在另一监听地址校验新二进制、证书/私钥配对，以及 `/config` 和真实 WT 收发。保持域名相同，否则现有站点身份与端侧数据不共享。替换 current 链接后重启服务，从打开的旧标签页和新标签页分别确认收发、入场名单、重连状态。替换证书也需要重启；先部署新证书和匹配私钥，再一起切换服务。旧进程内的频道和去重窗口会消失。客户端不会重放离线期间别人的消息；投递结果未知时先由用户核对。
+```sh
+./pulsec -addr :8443 -cert fullchain.pem -key privkey.pem
+```
 
-若出现持续接入失败、私聊隔离失效、投递错误或确认的性能回退，停止扩大开放范围；恢复上一个已校验的目录和需要的受信任证书，重启服务，再重复双客户端收发和新旧标签页检查。重启可清除服务端临时状态，但不能撤销已送达的消息。具体本地演练入口见[发布验收](../qa/README.md)。
+发行包和源码树均包含 `deploy/pulsec.service`，可按安装目录和证书路径调整后用于 systemd。运行 `./pulsec -help` 查看可用参数和默认值。
+
+## 排障、升级和回退
+
+- 页面打不开时查 DNS、TCP 和证书链。页面可打开但无法进房时，查浏览器的 WebTransport 支持、UDP 转发和中继接入限额。
+- `-stats-interval` 启用连接、频道、拒绝、限速及慢连接断开等聚合计数。共享 NAT 下多人共用来源额度，调整 `-source-rate` 前先检查限速计数。宿主机与代理的日志策略由部署方配置。
+- 升级时保留上一版目录、镜像及配置，给每个版本设置独立的 `PULSEC_IMAGE`。在新目录使用相同的 Compose 项目名启动。回退时切回旧目录，运行 `docker compose -p pulsec up -d --no-build --force-recreate`。从已打开的标签页和新标签页分别确认能进房并收发消息。
+- 在同一证书挂载目录内换好匹配的证书链和私钥后，运行 `docker compose -p pulsec restart pulsec`。挂载路径发生变化时重新创建容器。中继重启会释放频道与临时回执，客户端会对投递结果未知的消息提示核对。
