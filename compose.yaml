@@ -1,0 +1,26 @@
+services:
+  pulsec:
+    image: ${PULSEC_IMAGE:-pulsec:0.1.0-rc.1}
+    build:
+      context: .
+      target: ${PULSEC_TARGET:-source}
+      args:
+        RELEASE_BINARY: ${PULSEC_BINARY:-dist/release/pulsec}
+    ports:
+      - "${PULSEC_BIND_IP:-127.0.0.1}:${PULSEC_PORT:-8443}:8443/tcp"
+      - "${PULSEC_BIND_IP:-127.0.0.1}:${PULSEC_PORT:-8443}:8443/udp"
+    volumes:
+      - type: bind
+        source: ${PULSEC_CERT_DIR:-./certs}
+        target: /tls
+        read_only: true
+        bind:
+          create_host_path: false
+          selinux: Z
+    command: ["-addr", ":8443", "-cert", "/tls/fullchain.pem", "-key", "/tls/privkey.pem", "-stats-interval", "1m"]
+    group_add:
+      - "${PULSEC_TLS_GID:-65532}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

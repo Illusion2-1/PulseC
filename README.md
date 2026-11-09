@@ -2,7 +2,27 @@
 
 匿名、即时的文本聊天室。前端使用 SvelteKit CSR，Go 通过 embed 打包静态资源。浏览器通过一条 WebTransport 双向可靠流交换消息和频道状态。
 
-## 运行
+## Docker Compose 部署（首选）
+
+在源码目录或解压后的 Linux amd64 发布包目录执行。先把**浏览器信任**的完整证书链和对应私钥放到专用的 `certs/fullchain.pem`、`certs/privkey.pem`，让容器的补充组有权读取。源码检出可复制 `.env.example` 为 `.env`；发布包自带 `.env`，请保留其中的 artifact 配置，使用验收过的二进制构建离线镜像。
+
+```sh
+docker compose config -q
+docker compose up -d --build
+docker compose logs --tail=10 pulsec
+```
+
+在 Linux 上只想先试聊、没有证书时，可用本地覆盖配置：
+
+```sh
+docker compose -f compose.yaml -f compose.local.yaml up -d --build
+```
+
+打开 <http://127.0.0.1:8443>。此配置只在宿主机回环监听。公网部署使用上面的主配置。
+
+主配置默认只向主机回环映射 8443/TCP 和 8443/UDP。公网部署在 `.env` 设置 `PULSEC_BIND_IP=0.0.0.0` 并开放这两个端口，然后通过证书对应域名的 HTTPS 地址访问。证书权限、切换到 443、本地证书和版本回退见[部署手册](docs/operations.md)。最终运行镜像采用非 root 用户和只读根文件系统，仅包含 PulseC 可执行文件。
+
+## 直接运行单文件
 
 在 Linux x86-64 上运行 `./dist/pulsec`，然后打开 <http://127.0.0.1:8443>。本机模式使用回环 HTTP 提供页面，自动生成短期 ECDSA 证书并将指纹交给浏览器校验 WebTransport 连接。开发证书有效期为 13 天，可重启进程更新。运行时只需要可执行文件。
 
@@ -16,14 +36,16 @@
 
 ## 从源码构建
 
-使用 Go 1.26、Node.js 22.12+、npm 和 make。在项目根目录运行：
+候选版验证使用 Go 1.26.10、Node.js 22.23.1、npm 和 make。在项目根目录运行：
 
 ```sh
 make build
 ./dist/pulsec
 ```
 
-`make test` 生成前端资源后运行 Go 竞态检测和中继测试。
+`make test` 构建前端并运行前端单测和 Go 竞态测试。完整检查和依赖扫描见[贡献指南](CONTRIBUTING.md)及[安全报告](docs/security-review.md)。
+
+发行内容见[变更记录](CHANGELOG.md)。
 
 ## 频道与身份
 

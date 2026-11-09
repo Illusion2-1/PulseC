@@ -1,0 +1,7 @@
+# Optional Linux-only loopback demo. Use alongside compose.yaml.
+services:
+  pulsec:
+    network_mode: host
+    ports: !reset []
+    volumes: !reset []
+    command: ["-addr", "127.0.0.1:${PULSEC_PORT:-8443}"]

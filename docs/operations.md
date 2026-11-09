@@ -2,7 +2,18 @@
 
 首发支持范围：单个 Linux x86-64 进程，Go 二进制内含页面。使用支持 WebTransport 的浏览器；同源 TCP 提供 HTTPS，UDP 提供 HTTP/3/WebTransport。运行环境无需 Node、Go、数据库或额外资源目录。服务端能转发和读取正文，未提供端到端加密或 IP 匿名；不保留聊天历史。未列出频道可以被猜到。运营方应检查防火墙、反代、托管平台和崩溃收集器的实际日志策略。
 
-## 安装和首次上线
+## Docker Compose（推荐）
+
+在源码目录或已解压的发布包目录运行 `docker compose`。源码默认走多阶段构建：Node 编译 Svelte 静态资源、Go 将资源嵌入中继、scratch 镜像只带二进制；两个构建基础镜像均固定清单摘要。发布包的 `.env` 会选择 `artifact`，构建时直接复制包内已验收的 Linux amd64 文件，不下载基础镜像或依赖。先核验包外的 SHA256SUMS；不要在非 amd64 主机上直接运行 amd64 产物，需要其他架构时从源码构建和验证。
+
+将证书和私钥复制到**专用**目录（不要直接指向系统的证书仓库或含其他域名私钥的目录）。让容器可读：默认进程 UID/GID 为 65532，`.env` 的 `PULSEC_TLS_GID` 可设为已有证书读取组的数值 GID；该组需要目录的遍历权限和两个文件的读权限。推荐目录 0750、私钥 0640。不需要给所有人读权限。Compose 将此目录只读挂载；在启用 SELinux 的 Docker 主机上，此专用目录会被标记为该容器私有。rootless 或配置了用户命名空间时，要确认映射后的宿主机组或 ACL 权限。
+
+- **本机**：默认 `PULSEC_BIND_IP=127.0.0.1`、`PULSEC_PORT=8443`。容器使用 HTTPS 模式，不能用“跳过证书验证”的警告页替代有效证书。使用浏览器公有信任根签发的有效证书。仅在系统中安装私有 CA 并不保证浏览器接受 QUIC（[Chromium 说明](https://chromium.googlesource.com/website/+/refs/heads/main/site/quic/playing-with-quic/index.md)）。在 Linux 上可用 `docker compose -f compose.yaml -f compose.local.yaml up -d --build` 免证书试用；它使用 host 网络，取消端口映射和证书挂载，仅绑定宿主机回环地址，以 HTTP 加短期证书指纹接入。其他系统可直接运行本机对应架构的单文件。此覆盖配置仅用于开发。
+- **公网**：设置 `PULSEC_BIND_IP=0.0.0.0`、`PULSEC_PORT=443`、`PULSEC_CERT_DIR=/专用目录` 和 `PULSEC_TLS_GID`。同时开放宿主机的 TCP/UDP 443。容器仍在 8443 以非特权用户运行。不要把凭据写入镜像或提交 `.env`、`certs/`。
+- **启动**：`docker compose config -q && docker compose up -d --build`；用 `docker compose ps`、`docker compose logs --tail=10 pulsec` 和双浏览器聊天检查运行状态。容器使用只读根文件系统、移除 capabilities、禁止权限提升；日志是聚合计数，消息没有数据卷。
+- **升级/回退**：保留上一版本文件、镜像和原配置，给每版一个独立的 PULSEC_IMAGE 标签。跨版本目录使用相同的项目名（例如始终 `docker compose -p pulsec …`），防止第二个项目抢占端口。新版本目录用 `up -d --build`，如需回退，切回旧目录/镜像执行 `up -d --no-build --force-recreate`，然后执行下述旧标签页和新标签页验证。轮换同一目录内的证书和私钥后执行 `docker compose restart pulsec`；若挂载路径变了，使用 `up -d --force-recreate`。
+
+## 原生安装和首次上线
 
 1. 从可信发布渠道取得版本包和 SHA256SUMS，对照独立获取的摘要后运行 `sha256sum -c SHA256SUMS`。未单独提供发行签名时，校验和不能证明来源。保存当前与上一版的完整目录，例如 `/opt/pulsec/0.1.0-rc.1/pulsec`；用 `pulsec -version` 识别产物。旧的 M0 尚无该参数，可用 SHA-256 识别。
 2. 将域名指向服务器，准备覆盖该域名的受信任完整证书链和私钥。让单独的系统用户 pulsec 仅能读取证书和私钥，私钥不要开放给其他用户；服务无需写入安装目录。示例使用非特权端口 8443，**TCP 和 UDP 的 8443 都要放通**。页面和 WebTransport 对外主机及端口必须相同。普通 HTTP 反代只能证明页面可访问，不能替中继接收 QUIC。
