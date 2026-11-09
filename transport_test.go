@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/quic-go/quic-go/http3"
 	wt "github.com/quic-go/webtransport-go"
+
+	"pulsec/internal/chat"
 )
 
 // Exercise framing over the production QUIC, HTTP/3 and WebTransport stack.
@@ -35,7 +38,7 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := "https://" + listener.LocalAddr().String()
-	h := newHub()
+	h := chat.NewHub(128)
 	mux := http.NewServeMux()
 	wtServer := &wt.Server{H3: &http3.Server{TLSConfig: http3.ConfigureTLSConfig(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}), Handler: browserHeaders(false, mux)}}
 	gate := newIngress(8)
@@ -87,4 +90,40 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 		_ = sess.CloseWithError(0, "")
 	}
 	ping()
+}
+
+func TestIngressBoundaries(t *testing.T) {
+	g := newIngress(1)
+	if !g.acquire() || g.acquire() {
+		t.Fatal("capacity exceeded")
+	}
+	<-g.slots
+	if !g.acquire() {
+		t.Fatal("slot did not become reusable")
+	}
+	for _, tc := range []struct {
+		host    string
+		local   bool
+		origins []string
+		want    int
+	}{
+		{"malicious.example:8443", true, []string{"http://malicious.example:8443"}, 403},
+		{"127.0.0.1:8443", true, []string{"http://evil.test"}, 403},
+		{"localhost:8443", true, nil, 403},
+		{"localhost:8443", true, []string{"http://localhost:8443", "http://localhost:8443"}, 403},
+		{"[::1]:8443", true, []string{"http://[::1]:8443"}, 503},
+		{"chat.example", false, []string{"http://chat.example"}, 403},
+		{"chat.example", false, []string{"https://chat.example"}, 503},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "https://example.test/connect", nil)
+		r.Method = http.MethodConnect
+		r.ProtoMajor = 3
+		r.Host = tc.host
+		r.Header["Origin"] = tc.origins
+		w := httptest.NewRecorder()
+		browserHeaders(tc.local, g.connect(nil, nil, tc.local)).ServeHTTP(w, r)
+		if w.Code != tc.want || w.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("host=%s got %d", tc.host, w.Code)
+		}
+	}
 }

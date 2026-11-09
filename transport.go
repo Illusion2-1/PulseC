@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"pulsec/internal/protocol"
-
 	"errors"
 	"log/slog"
 	"net"
@@ -17,6 +15,10 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
+
+	"pulsec/internal/chat"
+	"pulsec/internal/protocol"
+	"pulsec/internal/ratelimit"
 )
 
 // The session limit also applies before identity, including visitors who only browse the directory.
@@ -26,21 +28,22 @@ type ingress struct {
 	failures   atomic.Uint64
 	slow       atomic.Uint64
 	mu         sync.Mutex
-	handshakes timeBudget
-	sessions   timeBudget
+	handshakes ratelimit.Bucket
+	sessions   ratelimit.Bucket
 }
 
 func newIngress(n int) *ingress { return &ingress{slots: make(chan struct{}, n)} }
 
-func (g *ingress) allowStart(b *timeBudget) bool {
+func (g *ingress) allowStart(b *ratelimit.Bucket) bool {
 	g.mu.Lock()
-	ok := b.take(time.Now(), time.Second/128, 128)
+	ok := b.Take(time.Now(), time.Second/128, 128)
 	g.mu.Unlock()
 	if !ok {
 		g.denied.Add(1)
 	}
 	return ok
 }
+
 func (g *ingress) acquire() bool {
 	if !g.allowStart(&g.sessions) {
 		return false
@@ -106,7 +109,7 @@ func browserHeaders(local bool, next http.Handler) http.Handler {
 	})
 }
 
-func (g *ingress) connect(wt *webtransport.Server, h *hub, local bool) http.HandlerFunc {
+func (g *ingress) connect(wt *webtransport.Server, h *chat.Hub, local bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor != 3 || r.Method != http.MethodConnect {
 			http.Error(w, "WebTransport required", http.StatusBadRequest)
@@ -145,10 +148,9 @@ func (g *ingress) connect(wt *webtransport.Server, h *hub, local bool) http.Hand
 			g.failures.Add(1)
 			return
 		}
-		p := &peer{source: remote.Addr().Unmap(), send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+		p := chat.NewPeer(remote.Addr())
 		defer func() {
-			h.remove(p)
-			if p.overflow {
+			if h.Remove(p) {
 				g.slow.Add(1)
 			}
 		}()
@@ -156,11 +158,11 @@ func (g *ingress) connect(wt *webtransport.Server, h *hub, local bool) http.Hand
 			defer closeSession()
 			for {
 				select {
-				case <-p.stop:
+				case <-p.Done():
 					return
 				case <-sess.Context().Done():
 					return
-				case data := <-p.send:
+				case data := <-p.Outbound():
 					if stream.SetWriteDeadline(time.Now().Add(15*time.Second)) != nil {
 						return
 					}
@@ -182,7 +184,7 @@ func (g *ingress) connect(wt *webtransport.Server, h *hub, local bool) http.Hand
 				}
 				return
 			}
-			if !h.handle(p, c) {
+			if !h.Handle(p, c) {
 				g.failures.Add(1)
 				return
 			}

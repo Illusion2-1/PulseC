@@ -1,18 +1,19 @@
-package main
+package chat
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"pulsec/internal/protocol"
 	"strings"
 	"testing"
 	"time"
+
+	"pulsec/internal/protocol"
 )
 
 type event map[string]any
 
-func events(t *testing.T, p *peer) []event {
+func events(t *testing.T, p *Peer) []event {
 	t.Helper()
 	var list []event
 	for len(p.send) > 0 {
@@ -26,17 +27,17 @@ func events(t *testing.T, p *peer) []event {
 }
 
 func TestRelayDelivery(t *testing.T) {
-	h := newHub()
-	join := func(n, cred string) *peer {
-		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 64), stop: make(chan struct{})}
-		h.handle(p, protocol.Command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
-		h.handle(p, protocol.Command{Op: "join", Room: "room"})
+	h := NewHub(128)
+	join := func(n, cred string) *Peer {
+		p := &Peer{rooms: map[string]bool{}, send: make(chan []byte, 64), stop: make(chan struct{})}
+		h.Handle(p, protocol.Command{Op: "identity", Nick: n, Proof: strings.Repeat(cred, 64)})
+		h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
 	}
 	a := join("A", "a")
 	b := join("B", "b")
 	send := protocol.Command{Op: "send", Kind: "chat", Room: "room", Text: "first", ID: fmt.Sprintf("%036d", 0)}
-	h.handle(a, send)
+	h.Handle(a, send)
 	c := join("B", "c")
 	for _, e := range events(t, c) {
 		if e["op"] == "message" {
@@ -45,36 +46,36 @@ func TestRelayDelivery(t *testing.T) {
 	}
 	events(t, b)
 	events(t, a)
-	h.handle(a, send)
+	h.Handle(a, send)
 	if len(events(t, b)) != 0 || events(t, a)[0]["op"] != "ack" {
 		t.Fatal("retry was not idempotent")
 	}
 	send.ID = fmt.Sprintf("%036d", 1)
 	send.Kind = "whisper"
 	send.To = "B"
-	h.handle(a, send)
+	h.Handle(a, send)
 	if events(t, a)[0]["op"] != "error" {
 		t.Fatal("ambiguous whisper")
 	}
 	send.To = "B#" + b.trip
-	h.handle(a, send)
+	h.Handle(a, send)
 	if len(events(t, c)) != 0 || events(t, b)[0]["kind"] != "whisper" {
 		t.Fatal("whisper recipients")
 	}
 	send.Kind = "chat"
 	for i := 2; i < 6; i++ {
 		send.ID = fmt.Sprintf("%036d", i)
-		h.handle(a, send)
+		h.Handle(a, send)
 	}
-	h.remove(a)
+	h.Remove(a)
 	a = join("A", "a")
 	events(t, a)
 	send.ID = fmt.Sprintf("%036d", 6)
-	h.handle(a, send)
+	h.Handle(a, send)
 	if events(t, a)[0]["op"] != "limited" {
 		t.Fatal("reconnect reset limiter")
 	}
-	h.handle(c, protocol.Command{Op: "directory"})
+	h.Handle(c, protocol.Command{Op: "directory"})
 	var rows []any
 	for _, e := range events(t, c) {
 		if e["op"] == "directory" {
@@ -84,13 +85,14 @@ func TestRelayDelivery(t *testing.T) {
 	if len(rows) != 0 {
 		t.Fatal("unlisted channel leaked")
 	}
-	h.remove(a)
-	h.remove(b)
-	h.remove(c)
+	h.Remove(a)
+	h.Remove(b)
+	h.Remove(c)
 	if len(h.rooms) != 0 || len(h.peers) != 0 {
 		t.Fatal("empty room retained")
 	}
 }
+
 func TestActivityWindow(t *testing.T) {
 	r := channel{minute: 100}
 	r.bins[29] = 3
@@ -107,11 +109,11 @@ func TestActivityWindow(t *testing.T) {
 // Two browser tabs can legitimately share the same trip and nickname. Roster
 // changes must identify the connection, including when older clients share a room.
 func TestRosterAcrossProtocolVersions(t *testing.T) {
-	h := newHub()
-	join := func(delta bool) *peer {
-		p := &peer{rooms: map[string]bool{}, send: make(chan []byte, 16), stop: make(chan struct{})}
-		h.handle(p, protocol.Command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
-		h.handle(p, protocol.Command{Op: "join", Room: "room"})
+	h := NewHub(128)
+	join := func(delta bool) *Peer {
+		p := &Peer{rooms: map[string]bool{}, send: make(chan []byte, 16), stop: make(chan struct{})}
+		h.Handle(p, protocol.Command{Op: "identity", Nick: "twin", Proof: strings.Repeat("a", 64), RosterDelta: delta})
+		h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 		return p
 	}
 	legacy := join(false)
@@ -131,12 +133,12 @@ func TestRosterAcrossProtocolVersions(t *testing.T) {
 	if target != float64(second.memberID) || first.memberID == second.memberID {
 		t.Fatal("identical identities need distinct roster entries")
 	}
-	h.handle(second, protocol.Command{Op: "nick", Nick: "new"})
+	h.Handle(second, protocol.Command{Op: "nick", Nick: "new"})
 	e = events(t, first)
 	if len(e) != 1 || e[0]["action"] != "nick" || e[0]["user"].(map[string]any)["id"] != target || e[0]["user"].(map[string]any)["nick"] != "new" {
 		t.Fatal("rename", e)
 	}
-	h.remove(second)
+	h.Remove(second)
 	e = events(t, first)
 	if len(e) != 1 || e[0]["action"] != "leave" || e[0]["user"].(map[string]any)["id"] != target {
 		t.Fatal("leave", e)
@@ -154,7 +156,7 @@ func TestRosterAcrossProtocolVersions(t *testing.T) {
 }
 
 func TestProtocolExamples(t *testing.T) {
-	data, err := os.ReadFile("testdata/protocol.json")
+	data, err := os.ReadFile("../../testdata/protocol.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,15 +168,15 @@ func TestProtocolExamples(t *testing.T) {
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
 	}
-	h := newHub()
+	h := NewHub(128)
 	for _, tc := range cases {
-		p := &peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+		p := &Peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
 		if tc.Setup == "member" {
-			h.handle(p, protocol.Command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
-			h.handle(p, protocol.Command{Op: "join", Room: "room"})
+			h.Handle(p, protocol.Command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
+			h.Handle(p, protocol.Command{Op: "join", Room: "room"})
 			events(t, p)
 		}
-		if !h.handle(p, tc.Command) {
+		if !h.Handle(p, tc.Command) {
 			t.Fatalf("unexpected disconnect for %s", tc.Command.Op)
 		}
 		got := events(t, p)
@@ -189,6 +191,6 @@ func TestProtocolExamples(t *testing.T) {
 		if tc.Event["op"] == "error" && (got[0]["text"] == "" || got[0]["id"] != tc.Command.ID || got[0]["room"] != tc.Command.Room) {
 			t.Errorf("missing legacy fields: %v", got[0])
 		}
-		h.remove(p)
+		h.Remove(p)
 	}
 }

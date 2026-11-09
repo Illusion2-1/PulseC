@@ -11,4 +11,4 @@
 | 跨站接入、畸形输入 | 本机开发 TCP 路径有 Host 检查，HTTP/3 没有统一应用；重复 Origin 不能只取第一个值 | 两条监听路径使用同一浏览器响应头及回环 Host 检查；CONNECT 要求唯一且完全匹配的 Origin。真实受信 TLS 上向三个客户端分别送入越界帧、畸形 JSON 和非法 UTF-8；坏会话断开，正常会话仍能 ping |
 | 诊断泄漏 | 底层库或默认 HTTP 日志可能包含对端地址或对端提供的错误信息 | 禁止底层默认日志进入业务输出，服务端只记录明确的启动/配置错误或可选的汇总计数，不记录消息、proof、房名或来源地址。使用能重用的合成凭据和含标记的关闭原因作发布实测；宿主机、代理、崩溃转储和浏览器日志仍需部署者单独检查 |
 
-可复现：在前端已构建的仓库运行 `go test -race -count=1 .` 和 `go test -fuzz=FuzzUntrustedCommand -fuzztime=30s .`。[协议测试](../relay_test.go)、[资源上界测试](../relay_security_test.go)、[真实网络坏帧测试](../transport_test.go)和[协议样例](../testdata/protocol.json)均入库。2026-11-09 的短模糊测试在 4 秒内执行 132,818 次，没有发现崩溃或未授权创建房间/回执；这不能证明不存在漏洞。对公网入站可达性和上游抗流量攻击能力的判断需要实际部署环境，扫描与报告流程见[安全政策](../SECURITY.md)。
+可复现：在前端已构建的仓库运行 `go test -race -count=1 ./...` 和 `go test -fuzz=FuzzUntrustedCommand -fuzztime=30s ./internal/chat`。[协议测试](../internal/chat/hub_test.go)、[资源上界测试](../internal/chat/limits_test.go)、[真实网络坏帧测试](../transport_test.go)和[协议样例](../testdata/protocol.json)均入库。2026-11-09 的短模糊测试在 4 秒内执行 132,818 次，没有发现崩溃或未授权创建房间/回执；这不能证明不存在漏洞。对公网入站可达性和上游抗流量攻击能力的判断需要实际部署环境，扫描与报告流程见[安全政策](../SECURITY.md)。

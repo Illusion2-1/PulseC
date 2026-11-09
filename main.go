@@ -27,6 +27,8 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"golang.org/x/net/netutil"
+
+	"pulsec/internal/chat"
 )
 
 //go:embed all:web/build
@@ -83,15 +85,14 @@ func main() {
 	conf := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
 	mux := http.NewServeMux()
 	wt := &webtransport.Server{H3: &http3.Server{Addr: *addr, TLSConfig: http3.ConfigureTLSConfig(conf.Clone()), Handler: browserHeaders(local, mux)}}
-	hub := newHub()
-	hub.sourceRate = *sourceRate
+	hub := chat.NewHub(*sourceRate)
 	gate := newIngress(*maxSessions)
 	gate.configure(wt)
 	mux.HandleFunc("/connect", gate.connect(wt, hub, local))
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"pin": pin, "boot": hub.start.UTC().Format(time.RFC3339Nano)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"pin": pin, "boot": hub.Started().UTC().Format(time.RFC3339Nano)})
 	})
 	static, err := fs.Sub(assets, "web/build")
 	if err != nil {
@@ -106,7 +107,7 @@ func main() {
 	listener = netutil.LimitListener(listener, *maxSessions)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go hub.maintain(ctx, gate, *statsInterval, logger)
+	go maintain(ctx, hub, gate, *statsInterval, logger)
 	result := make(chan error, 2)
 	go func() { result <- wt.ListenAndServe() }()
 	go func() {
@@ -127,7 +128,7 @@ func main() {
 	}
 }
 
-func (h *hub) maintain(ctx context.Context, g *ingress, interval time.Duration, logger *log.Logger) {
+func maintain(ctx context.Context, h *chat.Hub, g *ingress, interval time.Duration, logger *log.Logger) {
 	sweep := time.NewTicker(time.Minute)
 	defer sweep.Stop()
 	var stats <-chan time.Time
@@ -141,13 +142,10 @@ func (h *hub) maintain(ctx context.Context, g *ingress, interval time.Duration, 
 		case <-ctx.Done():
 			return
 		case now := <-sweep.C:
-			h.sweep(now)
+			h.Sweep(now)
 		case <-stats:
-			h.Lock()
-			online, rooms, limited := len(h.peers), len(h.rooms), h.limited
-			receipts, trips, sources := len(h.receipts), len(h.limits), len(h.sources)
-			h.Unlock()
-			logger.Printf("stats sessions=%d online=%d rooms=%d admission_denied=%d protocol_failures=%d limited=%d slow_disconnects=%d receipts=%d limit_trips=%d limit_sources=%d", len(g.slots), online, rooms, g.denied.Load(), g.failures.Load(), limited, g.slow.Load(), receipts, trips, sources)
+			stats := h.Stats()
+			logger.Printf("stats sessions=%d online=%d rooms=%d admission_denied=%d protocol_failures=%d limited=%d slow_disconnects=%d receipts=%d limit_trips=%d limit_sources=%d", len(g.slots), stats.Online, stats.Rooms, g.denied.Load(), g.failures.Load(), stats.Limited, g.slow.Load(), stats.Receipts, stats.LimitTrips, stats.LimitSources)
 		}
 	}
 }
