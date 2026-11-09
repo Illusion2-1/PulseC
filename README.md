@@ -1,5 +1,7 @@
 # PulseC
 
+<p align="right"><strong>简体中文</strong> · <a href="README.en.md" lang="en">English</a></p>
+
 [![主分支检查](https://github.com/Illusion2-1/PulseC/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/Illusion2-1/PulseC/actions/workflows/check.yml?query=branch%3Amain)
 [![Go 版本要求](https://img.shields.io/github/go-mod/go-version/Illusion2-1/PulseC)](go.mod)
 [![MIT 许可证](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
