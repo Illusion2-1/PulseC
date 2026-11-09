@@ -131,7 +131,7 @@ func (r *channel) membership(room, action, text string, member *peer) {
 		if snapshot == nil {
 			snapshot = pack(r.state(room))
 			if text != "" {
-				notice = pack(event{"op": "notice", "room": room, "text": text})
+				notice = pack(event{"op": "notice", "room": room, "action": action, "user": member.member(), "text": text})
 			}
 		}
 		if notice != nil {
@@ -185,8 +185,8 @@ func (h *hub) handle(p *peer, c command) bool {
 	if p.stopped || p.requests > 60 {
 		return false
 	}
-	fail := func(msg string) {
-		p.emit(event{"op": "error", "id": c.ID, "room": c.Room, "text": msg, "request": c.Op})
+	fail := func(code, msg string) {
+		p.emit(event{"op": "error", "id": c.ID, "room": c.Room, "text": msg, "code": code, "request": c.Op})
 	}
 	r := h.rooms[c.Room]
 	switch c.Op {
@@ -231,8 +231,16 @@ func (h *hub) handle(p *peer, c command) bool {
 		p.active = now.Unix()
 		p.emit(event{"op": "identity", "trip": p.trip})
 	case "join":
-		if p.trip == "" || !roomOK.MatchString(c.Room) || len(p.rooms) >= 9 {
-			fail("频道名无效或已达到 9 个频道上限")
+		if p.trip == "" {
+			fail("identity_required", "请先设置身份")
+			break
+		}
+		if !roomOK.MatchString(c.Room) {
+			fail("invalid_room", "频道名无效")
+			break
+		}
+		if !p.rooms[c.Room] && len(p.rooms) >= 9 {
+			fail("room_limit", "最多加入 9 个频道")
 			break
 		}
 		if r == nil {
@@ -262,7 +270,7 @@ func (h *hub) handle(p *peer, c command) bool {
 		}
 	case "nick":
 		if !nickOK.MatchString(c.Nick) || p.trip == "" {
-			fail("昵称无效")
+			fail("invalid_nick", "昵称无效")
 			break
 		}
 		p.nick = c.Nick
@@ -271,8 +279,12 @@ func (h *hub) handle(p *peer, c command) bool {
 			h.rooms[n].membership(n, "nick", "", p)
 		}
 	case "send":
-		if !p.rooms[c.Room] || !idOK.MatchString(c.ID) {
-			fail("尚未加入频道或消息编号无效")
+		if !p.rooms[c.Room] {
+			fail("not_joined", "尚未加入频道")
+			break
+		}
+		if !idOK.MatchString(c.ID) {
+			fail("invalid_id", "消息编号无效")
 			break
 		}
 		key := p.trip + "/" + c.ID
@@ -281,7 +293,7 @@ func (h *hub) handle(p *peer, c command) bool {
 			break
 		}
 		if strings.TrimSpace(c.Text) == "" || utf8.RuneCountInString(c.Text) > 2000 {
-			fail("消息需要 1–2000 个字符")
+			fail("invalid_text", "消息需要 1–2000 个字符")
 			break
 		}
 		l := h.limits[p.trip]
@@ -309,7 +321,7 @@ func (h *hub) handle(p *peer, c command) bool {
 			r.bins[29]++
 		case "topic":
 			if utf8.RuneCountInString(c.Text) > 120 {
-				fail("主题最长 120 字")
+				fail("topic_too_long", "主题最长 120 字")
 				return true
 			}
 			r.topic = c.Text
@@ -319,14 +331,14 @@ func (h *hub) handle(p *peer, c command) bool {
 			for u := range r.members {
 				if u.nick == c.To || u.nick+"#"+u.trip == c.To {
 					if target != nil {
-						fail("收件人有重名，请指定 昵称#完整trip")
+						fail("ambiguous_recipient", "收件人有重名，请指定 昵称#完整trip")
 						return true
 					}
 					target = u
 				}
 			}
 			if target == nil {
-				fail("收件人不在线")
+				fail("recipient_offline", "收件人不在线")
 				return true
 			}
 			msg["to"] = target.nick + "#" + target.trip
@@ -335,7 +347,7 @@ func (h *hub) handle(p *peer, c command) bool {
 				p.emit(msg)
 			}
 		default:
-			fail("未知消息类型")
+			fail("unknown_kind", "未知消息类型")
 			return true
 		}
 		h.receipts[key] = receipt{now, ref}
@@ -343,7 +355,7 @@ func (h *hub) handle(p *peer, c command) bool {
 		p.active = now.Unix()
 		p.emit(event{"op": "ack", "id": c.ID, "ref": ref})
 	default:
-		fail("未知操作")
+		fail("unknown_op", "未知操作")
 	}
 	return true
 }

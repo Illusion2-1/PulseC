@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -146,5 +147,45 @@ func TestRosterAcrossProtocolVersions(t *testing.T) {
 	snapshot = e[len(e)-1]
 	if snapshot["op"] != "state" || len(snapshot["users"].([]any)) != 2 {
 		t.Fatal("legacy client did not receive up-to-date snapshot", snapshot)
+	}
+}
+
+func TestProtocolExamples(t *testing.T) {
+	data, err := os.ReadFile("testdata/protocol.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Setup   string
+		Command command
+		Event   event
+	}
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	h := newHub()
+	for _, tc := range cases {
+		p := &peer{send: make(chan []byte, 64), rooms: map[string]bool{}, stop: make(chan struct{})}
+		if tc.Setup == "member" {
+			h.handle(p, command{Op: "identity", Nick: "reader", Proof: strings.Repeat("1", 64)})
+			h.handle(p, command{Op: "join", Room: "room"})
+			events(t, p)
+		}
+		if !h.handle(p, tc.Command) {
+			t.Fatalf("unexpected disconnect for %s", tc.Command.Op)
+		}
+		got := events(t, p)
+		if len(got) != 1 {
+			t.Fatalf("command %s got %v", tc.Command.Op, got)
+		}
+		for k, want := range tc.Event {
+			if got[0][k] != want {
+				t.Errorf("%s: %s=%v; want %v", tc.Command.Op, k, got[0][k], want)
+			}
+		}
+		if tc.Event["op"] == "error" && (got[0]["text"] == "" || got[0]["id"] != tc.Command.ID || got[0]["room"] != tc.Command.Room) {
+			t.Errorf("missing legacy fields: %v", got[0])
+		}
+		h.remove(p)
 	}
 }
