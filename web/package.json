@@ -2,15 +2,29 @@
   "name": "pulsec-web",
   "version": "1.0.0",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "check": "svelte-kit sync && svelte-check --no-tsconfig --fail-on-warnings",
+    "format:check": "prettier --check src/lib/*.js src/lib/*.svelte src/routes/*.js src/routes/*.svelte",
+    "test": "node --test",
+    "lint": "oxlint --deny-warnings src test"
   },
   "type": "module",
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.11",
     "@sveltejs/kit": "^2.70.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "oxlint": "1.92.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
     "svelte": "^5.57.3",
+    "svelte-check": "4.7.8",
+    "typescript": "5.9.3",
     "vite": "^7.3.7"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@sveltejs/kit": {
+      "cookie": "0.7.2"
+    }
+  }
 }
