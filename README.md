@@ -50,6 +50,8 @@ make build
 ./dist/pulsec
 ```
 
+`./dist/pulsec -version` 查看版本。构建默认使用最近的 Git tag 与当前提交短 hash（如 `v0.1.0-rc.1-0a60961`）；可用 `make build VERSION=v1.0.0` 或 `docker build --build-arg VERSION=v1.0.0 .` 覆盖。底层通过 Go 的 `-ldflags "-X main.version=v1.0.0"` 注入。无 tag 时使用 `untagged-<hash>`，无 Git 信息时使用 `dev`；从源码归档重建时请显式传入 `VERSION`。
+
 第一条命令单独验证 Go 后端。完整的开发检查、协议约定及测试入口见[贡献指南](CONTRIBUTING.md)、[后端架构](docs/architecture.md)和[中继协议](docs/protocol.md)。
 
 PulseC 使用 [MIT 许可证](LICENSE)。运行中的服务在 `/LICENSE.txt`、`/THIRD-PARTY-Go.txt` 和 `/THIRD-PARTY-Web.txt` 提供许可声明。

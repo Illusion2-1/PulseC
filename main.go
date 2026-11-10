@@ -18,6 +18,9 @@ import (
 //go:embed all:web/build
 var assets embed.FS
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	var cfg server.Config
 	flag.StringVar(&cfg.Addr, "addr", "127.0.0.1:8443", "TCP and UDP listen address")
@@ -30,10 +33,10 @@ func main() {
 	flag.IntVar(&cfg.MaxSessions, "max-sessions", 1024, "maximum simultaneous WebTransport sessions (1–4096)")
 	flag.IntVar(&cfg.SourceRate, "source-rate", 128, "messages per second per source IP across trips (1–4096; burst is twice the rate)")
 	flag.DurationVar(&cfg.StatsInterval, "stats-interval", 0, "print anonymous aggregate counters periodically (0 disables)")
-	version := flag.Bool("version", false, "print version and exit")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
-	if *version {
-		fmt.Println("PulseC 0.1.0-rc.1")
+	if *showVersion {
+		fmt.Println("PulseC", version)
 		return
 	}
 

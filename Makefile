@@ -1,7 +1,8 @@
 .PHONY: build frontend install-web web-check go-check smoke test check tools security
 export PATH := $(CURDIR)/dist/tools:$(PATH)
 GOVULNDB ?= https://vuln.go.dev
-GO_BUILD := CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w"
+VERSION ?= $(shell sh scripts/version.sh)
+GO_BUILD = CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$(VERSION)"
 
 build: frontend
 	$(GO_BUILD) -o dist/pulsec .
@@ -18,6 +19,7 @@ web-check: install-web
 	cd web && npm run format:check && npm run lint && npm run check && npm test
 
 go-check: frontend
+	sh scripts/version_test.sh
 	@test -z "$$(gofmt -l $$(git ls-files '*.go'))" || { gofmt -l $$(git ls-files '*.go'); exit 1; }
 	go test -race ./...
 	go vet ./...

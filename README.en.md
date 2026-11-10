@@ -50,6 +50,8 @@ make build
 ./dist/pulsec
 ```
 
+Run `./dist/pulsec -version` to print the version. Builds default to the nearest Git tag and current short commit hash (for example, `v0.1.0-rc.1-0a60961`). Override it with `make build VERSION=v1.0.0` or `docker build --build-arg VERSION=v1.0.0 .`; both inject Go's `-ldflags "-X main.version=v1.0.0"`. Builds without tags use `untagged-<hash>`; builds without Git metadata use `dev`. Pass `VERSION` explicitly when rebuilding a source archive.
+
 The first command runs the Go backend tests with the race detector. For development checks, package boundaries, and wire formats, see the [contributing guide (中文)](CONTRIBUTING.md), [backend architecture (中文)](docs/architecture.md), and [relay protocol (中文)](docs/protocol.md).
 
 PulseC uses the [MIT license](LICENSE). The running service serves license notices at `/LICENSE.txt`, `/THIRD-PARTY-Go.txt`, and `/THIRD-PARTY-Web.txt`.

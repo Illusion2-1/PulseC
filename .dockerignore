@@ -4,6 +4,9 @@
 !scripts
 scripts/**
 !scripts/go-notices.py
+!scripts/version.sh
+!.git
+!.git/**
 !go.mod
 !go.sum
 !/*.go

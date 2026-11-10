@@ -2,6 +2,7 @@
 # Build only the named Git commit; working tree files are never packaged.
 set -eu
 rev=$(git rev-parse --verify "${1:-HEAD}^{commit}")
+version=$(sh scripts/version.sh "$rev")
 out=$(pwd)/dist/release
 mkdir -p "$out"
 work=$(mktemp -d)
@@ -10,7 +11,7 @@ mkdir "$work/src"
 git archive --prefix=pulsec/ -o "$work/source.tar" "$rev"
 tar -xf "$work/source.tar" --strip-components=1 -C "$work/src"
 cd "$work/src"
-make build
+make build VERSION="$version"
 version=$(./dist/pulsec -version | cut -d' ' -f2)
 platform=$(go env GOOS)-$(go env GOARCH)
 name=pulsec-$version-$platform

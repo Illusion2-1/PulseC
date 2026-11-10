@@ -9,6 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 FROM ${GO_IMAGE} AS compile
+ARG VERSION
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -18,7 +19,9 @@ COPY --from=ui /src/web/build ./web/build
 COPY LICENSE ./web/build/LICENSE.txt
 COPY scripts/go-notices.py ./scripts/go-notices.py
 RUN python3 scripts/go-notices.py > web/build/THIRD-PARTY-Go.txt
-RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/pulsec .
+RUN --mount=type=bind,target=/repo \
+    version=$(cd /repo && sh scripts/version.sh) && \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$version" -o /out/pulsec .
 
 FROM scratch AS runtime
 USER 65532:65532
