@@ -200,50 +200,22 @@
   border-left: 1px solid var(--branch);
 }
 
-/* 引用线：亮琥珀色，从被引用的行出发，沿左侧线道连到每一条引用它的行 */
-.lane {
+/* 引用线：亮琥珀色，从被引用的行出发，沿左侧线道连到每一条引用它的行。
+ * 整个日志共用一张 SVG，每条线是一笔连续的路径；横线越过别的线道时画成半圆跨线 */
+.links {
   position: absolute;
   top: 0;
-  bottom: 0;
-  left: calc(
-    1ch - 2px + (var(--lanes) - 1 - var(--n)) * var(--lane) + var(--lane) / 2
-  );
-  border-left: 1px solid var(--amber);
-  pointer-events: none;
-}
-.lane.cut {
-  border-left: 0;
-  width: 1px;
-  background: linear-gradient(
-    var(--amber) 0 calc(var(--mid) - 4px),
-    transparent 0 calc(var(--mid) + 4px),
-    var(--amber) 0
-  );
-}
-.lane.start {
-  top: var(--mid);
-}
-.lane.end {
-  bottom: auto;
-  height: var(--mid);
-}
-.lane.start::after,
-.lane.end::after,
-.lane.tee::after {
-  content: "";
-  position: absolute;
   left: 0;
-  top: calc(var(--mid) - 1px);
-  width: calc((var(--n) + 0.5) * var(--lane) + 1ch - 2px);
-  border-top: 1px solid var(--amber);
+  width: calc((var(--lanes, 0) + 2) * 1ch - 2px);
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
 }
-.lane.start::after {
-  top: -1px;
-}
-.div .lane {
-  left: calc(
-    1ch + (var(--lanes) - 1 - var(--n)) * var(--lane) + var(--lane) / 2
-  );
+.links path {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1px;
+  stroke-linecap: square;
 }
 
 /* 高亮：只在悬停左栏时出现。悬停树顶亮整棵树 */

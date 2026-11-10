@@ -42,24 +42,39 @@ export function threads(items: LogEntry[], breaks = new Set<LogEntry>()) {
   return out;
 }
 
-export type LaneKind = "start" | "tee" | "pass" | "end";
-/** Lane index, its glyph and whether a branch crosses it on this row. */
-export type LaneMark = [lane: number, kind: LaneKind, cut?: "cut"];
+/** A quoted row and the rows quoting it, drawn in one lane. */
+export interface Link {
+  /** The quoted row. */
+  from: number;
+  /** Quoting rows in order; the line ends at the last one. */
+  to: number[];
+  /** 0 is the lane nearest the text. */
+  lane: number;
+}
+
+/** The line from a lane toward the text on a row where links join it. */
+export interface Branch {
+  row: number;
+  /** The outermost lane joining on this row. */
+  lane: number;
+  /** Lanes passing this row that the branch crosses, nearest the branch first. */
+  over: number[];
+}
 
 export interface Lanes {
-  /** Marks on each row. */
-  rows: LaneMark[][];
-  /** Lanes running through the divider above each row. */
-  gaps: number[][];
+  links: Link[];
+  /** One per row with a joint, in row order. */
+  branches: Branch[];
   /** Lanes in use, for the gutter width. */
   lanes: number;
 }
 
 // Quote links. Each quoted row gets one lane that runs down to its last quoter,
-// with a branch at every quoter in between. Lanes are reused once free; links
-// that do not fit in `max` lanes are left out (the >>ref stays clickable).
+// with a branch at every quoter in between. Shorter links take inner lanes and
+// pack tightly near the text; long links go outside, and are the ones left out
+// when they do not fit in `max` lanes (the >>ref stays clickable).
 const quoted = /```[\s\S]*?```|`[^`\n]+`/g;
-export function quoteLanes(items: LogEntry[], max = 3): Lanes {
+export function quoteLanes(items: LogEntry[], max = 6): Lanes {
   const at = new Map<string, number>();
   items.forEach((m, i) => m.ref && at.set(m.ref, i));
   const groups = new Map<number, number[]>();
@@ -74,32 +89,81 @@ export function quoteLanes(items: LogEntry[], max = 3): Lanes {
       groups.set(from, list);
     }
   });
+  const end = (l: { from: number; to: number[] }) => l.to.at(-1)!;
   const spans = [...groups]
-    .map(([from, to]) => ({ from, to: new Set(to), end: to.at(-1)! }))
-    .sort((a, b) => a.from - b.from || a.end - b.end);
-  const ends: number[] = Array(max).fill(-1);
-  const rows: LaneMark[][] = items.map(() => []);
-  const gaps: number[][] = items.map(() => []);
-  let lanes = 0;
+    .map(([from, to]) => ({ from, to }))
+    .sort((a, b) => end(a) - a.from - (end(b) - b.from) || a.from - b.from);
+  // Rows each lane covers. Two links may share a lane only with a row between
+  // them, otherwise their ends would touch and read as one line.
+  const taken: [number, number][][] = Array.from({ length: max }, () => []);
+  const links: Link[] = [];
   for (const s of spans) {
-    const lane = ends.findIndex((end) => end < s.from);
-    if (lane < 0) continue;
-    ends[lane] = s.end;
-    lanes = Math.max(lanes, lane + 1);
-    rows[s.from].push([lane, "start"]);
-    for (let i = s.from + 1; i <= s.end; i++) {
-      gaps[i].push(lane);
-      rows[i].push([lane, i === s.end ? "end" : s.to.has(i) ? "tee" : "pass"]);
-    }
-  }
-  // A branch runs from its lane toward the text, crossing every lane to its
-  // left. Those lanes get a gap there so a crossing does not read as a joint.
-  for (const row of rows) {
-    const inner = Math.min(
-      ...row.filter(([, kind]) => kind !== "pass").map(([lane]) => lane),
+    const lane = taken.findIndex((used) =>
+      used.every(([a, b]) => b < s.from || a > end(s)),
     );
-    for (const entry of row)
-      if (entry[1] === "pass" && entry[0] > inner) entry.push("cut");
+    if (lane < 0) continue;
+    taken[lane].push([s.from, end(s)]);
+    links.push({ ...s, lane });
   }
-  return { rows, gaps, lanes };
+  links.sort((a, b) => a.from - b.from || a.lane - b.lane);
+
+  // On each row with a joint, the branch from the outermost joining lane
+  // crosses every lane inside it that only passes through.
+  const joints = new Map<number, Set<number>>();
+  const passing = new Map<number, Set<number>>();
+  const add = (map: Map<number, Set<number>>, row: number, lane: number) =>
+    (map.get(row) ?? map.set(row, new Set()).get(row)!).add(lane);
+  for (const l of links) {
+    add(joints, l.from, l.lane);
+    for (const row of l.to) add(joints, row, l.lane);
+    for (let row = l.from + 1; row < end(l); row++)
+      if (!l.to.includes(row)) add(passing, row, l.lane);
+  }
+  const branches = [...joints]
+    .sort(([a], [b]) => a - b)
+    .map(([row, lanes]): Branch => {
+      const lane = Math.max(...lanes);
+      const over = [...(passing.get(row) ?? [])]
+        .filter((l) => l < lane)
+        .sort((a, b) => b - a);
+      return { row, lane, over };
+    });
+  const lanes = Math.max(0, ...links.map((l) => l.lane + 1));
+  return { links, branches, lanes };
+}
+
+/** Pixel positions measured from the rendered log. */
+export interface LaneGeometry {
+  /** x of each lane, by lane index. */
+  x: (lane: number) => number;
+  /** x where branches stop, just before the left column. */
+  tip: number;
+  /** Midline y of each row's first line; undefined if not rendered. */
+  y: (row: number) => number | undefined;
+  /** Radius of the arc where a branch hops over a lane. */
+  hop: number;
+}
+
+/** SVG path data: one vertical per link and one horizontal per branch. */
+export function lanePath(layout: Lanes, g: LaneGeometry) {
+  const d: string[] = [];
+  for (const l of layout.links) {
+    const top = g.y(l.from),
+      bottom = g.y(l.to.at(-1)!);
+    if (top === undefined || bottom === undefined) continue;
+    d.push(`M${g.x(l.lane)} ${top}V${bottom}`);
+  }
+  for (const b of layout.branches) {
+    const y = g.y(b.row);
+    if (y === undefined) continue;
+    let path = `M${g.x(b.lane)} ${y}`;
+    // A crossing is drawn as a half circle over the lane, never as a gap or
+    // a plain cross, so it cannot be mistaken for a joint or a break.
+    for (const lane of b.over) {
+      const x = g.x(lane);
+      path += `H${x - g.hop}A${g.hop} ${g.hop} 0 0 1 ${x + g.hop} ${y}`;
+    }
+    d.push(path + `H${g.tip}`);
+  }
+  return d.join("");
 }

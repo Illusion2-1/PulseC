@@ -8,6 +8,7 @@
   import { displayEvent, isWarning } from "$lib/i18n/translate";
   import type { LogEntry } from "$lib/types";
   import MessageBody from "./MessageBody.svelte";
+  import QuoteLinks from "./QuoteLinks.svelte";
 
   const chat = useChat();
   const items = $derived(chat.items);
@@ -39,11 +40,6 @@
   const author = (m: LogEntry) => !!m.trip && !!m.nick;
 </script>
 
-{#snippet lanes(gap: number[])}{#each gap as lane}<i
-      class="lane pass"
-      style:--n={lane}
-    ></i>{/each}{/snippet}
-
 <div
   class="log"
   style:--lanes={links.lanes}
@@ -52,25 +48,27 @@
   bind:this={chat.view.log}
   onscroll={() => chat.view.scrolled()}
 >
+  <QuoteLinks layout={links} />
   {#each items as m, i}
     {@const prev = items[i - 1]}
     {@const time = clock(m.time)}
     {@const shape = shapes[i]}
     {#if !prev || !sameDay(prev.time, m.time)}<div class="div day">
-        {@render lanes(links.gaps[i])}{date(m.time)}
+        {date(m.time)}
       </div>{:else if m.time - prev.time > 300000 && !shape.leaf}<div
         class="div tick"
       >
-        {@render lanes(links.gaps[i])}{time}
+        {time}
       </div>{/if}
     {#if m === chat.firstUnread}<div class="div">
-        {@render lanes(links.gaps[i])}{t("unread", {
+        {t("unread", {
           count: chat.unreadCount,
         })}
       </div>{/if}
     <div
       id={m.ref ? "m-" + m.ref : undefined}
       class="ln"
+      data-row={i}
       class:sys={notice(m)}
       class:join={m.kind === "presence"}
       class:act={m.kind === "me"}
@@ -85,11 +83,6 @@
       class:men={pinged(m)}
       class:self={own(m)}
     >
-      {#each links.rows[i] as [lane, kind, cut]}<i
-          class={"lane " + kind}
-          class:cut
-          style:--n={lane}
-        ></i>{/each}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="lf"

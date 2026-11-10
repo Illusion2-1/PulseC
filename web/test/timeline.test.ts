@@ -1,6 +1,11 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { quoteLanes, sameDay, threads } from "../src/lib/core/timeline";
+import {
+  lanePath,
+  quoteLanes,
+  sameDay,
+  threads,
+} from "../src/lib/core/timeline";
 import type { LogEntry } from "../src/lib/types";
 
 test("day boundaries follow local dates", () => {
@@ -62,24 +67,82 @@ test("quote lanes connect quoted and quoting rows", () => {
     msg("d", 4, ">>bbbbbbbbbbbb and >>aaaaaaaaaaaa"),
     msg("e", 5, "`>>bbbbbbbbbbbb` in code, >>ffffffffffff missing"),
   ];
-  const { rows, gaps, lanes } = quoteLanes(items);
-  assert.equal(lanes, 2);
-  assert.deepEqual(rows, [
-    [[0, "start"]],
-    [
-      [0, "pass"],
-      [1, "start"],
-    ],
-    [
-      [0, "tee"],
-      [1, "pass", "cut"],
-    ],
-    [
-      [0, "end"],
-      [1, "end"],
-    ],
-    [],
+  const layout = quoteLanes(items);
+  assert.equal(layout.lanes, 2);
+  // b→d is shorter, so it takes the inner lane; a's branch to c hops over it.
+  assert.deepEqual(layout.links, [
+    { from: 0, to: [2, 3], lane: 1 },
+    { from: 1, to: [3], lane: 0 },
   ]);
-  assert.deepEqual(gaps[3], [0, 1]);
-  assert.equal(quoteLanes(items, 1).lanes, 1, "extra links are dropped");
+  assert.deepEqual(layout.branches, [
+    { row: 0, lane: 1, over: [] },
+    { row: 1, lane: 0, over: [] },
+    { row: 2, lane: 1, over: [0] },
+    { row: 3, lane: 1, over: [] },
+  ]);
+  const one = quoteLanes(items, 1);
+  assert.deepEqual(
+    one.links,
+    [{ from: 1, to: [3], lane: 0 }],
+    "longest dropped",
+  );
+});
+
+test("quote lanes only cross where links overlap", () => {
+  const ref = (n: number) => String(n).repeat(12);
+  const row = (n: number, text = "x") => msg("u" + n, n, text, "chat", ref(n));
+  // 0→2 and 1→3 overlap without nesting; 4→5 fits back into a free lane.
+  const items = [
+    row(0),
+    row(1),
+    row(2, ">>" + ref(0)),
+    row(3, ">>" + ref(1)),
+    row(4),
+    row(5, ">>" + ref(4)),
+  ];
+  const layout = quoteLanes(items);
+  assert.equal(layout.lanes, 2);
+  assert.deepEqual(layout.links, [
+    { from: 0, to: [2], lane: 0 },
+    { from: 1, to: [3], lane: 1 },
+    { from: 4, to: [5], lane: 0 },
+  ]);
+  // Lane 1 starts while lane 0 runs: its branch hops over lane 0 on row 1.
+  // Lane 1 passes row 2, but lane 0's branch runs the other way and misses it.
+  assert.deepEqual(
+    layout.branches.map((b) => [b.row, b.lane, b.over]),
+    [
+      [0, 0, []],
+      [1, 1, [0]],
+      [2, 0, []],
+      [3, 1, []],
+      [4, 0, []],
+      [5, 0, []],
+    ],
+  );
+});
+
+test("lane paths are continuous and hop over crossed lanes", () => {
+  const layout = {
+    lanes: 2,
+    links: [
+      { from: 0, to: [2], lane: 0 },
+      { from: 1, to: [3], lane: 1 },
+    ],
+    branches: [
+      { row: 1, lane: 1, over: [0] },
+      { row: 3, lane: 1, over: [] },
+    ],
+  };
+  const d = lanePath(layout, {
+    x: (lane) => 20 - lane * 10,
+    tip: 30,
+    y: (row) => (row === 2 ? undefined : row * 20),
+    hop: 3,
+  });
+  assert.equal(
+    d,
+    // 0→2 is skipped: row 2 is not rendered.
+    "M10 20V60" + "M10 20H17A3 3 0 0 1 23 20H30" + "M10 60H30",
+  );
 });
