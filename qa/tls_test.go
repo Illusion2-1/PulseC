@@ -29,7 +29,7 @@ import (
 )
 
 // Use a fresh private trust root per rotation. The public listener gets no development pin.
-func testCertificate(t *testing.T, serial int64) (string, string, *x509.CertPool) {
+func testPEM(t *testing.T, serial int64) ([]byte, []byte, *x509.CertPool) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -53,15 +53,21 @@ func testCertificate(t *testing.T, serial int64) (string, string, *x509.CertPool
 	if err != nil {
 		t.Fatal(err)
 	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: private}), pool
+}
+
+func testCertificate(t *testing.T, serial int64) (string, string, *x509.CertPool) {
+	t.Helper()
+	chain, key, roots := testPEM(t, serial)
 	dir := t.TempDir()
-	write := func(name, kind string, data []byte) string {
-		file := filepath.Join(dir, name)
-		if err := os.WriteFile(file, pem.EncodeToMemory(&pem.Block{Type: kind, Bytes: data}), 0600); err != nil {
-			t.Fatal(err)
-		}
-		return file
+	certPath, keyPath := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(certPath, chain, 0600); err != nil {
+		t.Fatal(err)
 	}
-	return write("cert.pem", "CERTIFICATE", der), write("key.pem", "EC PRIVATE KEY", private), pool
+	if err := os.WriteFile(keyPath, key, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return certPath, keyPath, roots
 }
 
 func TestProductionTLSRotation(t *testing.T) {

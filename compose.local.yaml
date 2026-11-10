@@ -1,7 +1,7 @@
-# Optional Linux-only loopback demo. Use alongside compose.yaml.
+# Linux loopback listener for a local chat or a co-located reverse proxy.
 services:
   pulsec:
-    network_mode: host
+    network_mode: ${PULSEC_LOCAL_NETWORK:-host}
     ports: !reset []
     volumes: !reset []
-    command: ["-addr", "127.0.0.1:${PULSEC_PORT:-8443}"]
+    command: ["-addr", "127.0.0.1:${PULSEC_PORT:-8443}", "-behind-proxy=${PULSEC_BEHIND_PROXY:-false}"]

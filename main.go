@@ -21,6 +21,7 @@ var assets embed.FS
 func main() {
 	var cfg server.Config
 	flag.StringVar(&cfg.Addr, "addr", "127.0.0.1:8443", "TCP and UDP listen address")
+	flag.BoolVar(&cfg.BehindProxy, "behind-proxy", false, "serve a co-located HTTPS proxy using an ephemeral certificate on numeric loopback only")
 	flag.StringVar(&cfg.HTTPAddr, "http-addr", "", "direct deployment: plaintext TCP listener for HTTP-01 and HTTPS redirects")
 	flag.StringVar(&cfg.PublicHost, "public-host", "", "direct deployment: canonical DNS hostname for HTTPS redirects")
 	flag.StringVar(&cfg.ACMEWebroot, "acme-webroot", "", "direct deployment: existing ACME client webroot directory")

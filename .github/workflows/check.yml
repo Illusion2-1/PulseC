@@ -28,14 +28,13 @@ jobs:
         run: |
           docker compose config -q
           docker compose -f compose.yaml -f compose.local.yaml config -q
-          export PULSEC_DOMAIN=chat.example.org PULSEC_WEBROOT=/srv/acme PULSEC_UPSTREAM_CA=/etc/caddy/origin.crt
+          export PULSEC_DOMAIN=chat.example.org
           public_ports='[.ports[] | "\(.published)/\(.protocol)"] | sort == ["443/tcp", "443/udp", "80/tcp"]'
           docker compose -f compose.yaml -f compose.direct.yaml config --format json |
-            jq -e ".services.pulsec | $public_ports"
-          docker compose -f compose.yaml -f compose.caddy.yaml config --format json |
-            jq -e ".services | (.pulsec.ports // [] | length == 0) and (.caddy | $public_ports)"
-      - name: Verify certificate publication and retries
-        run: sh qa/certbot-deploy.sh
+            jq -e ".services | (keys == [\"certbot\", \"pulsec\"]) and (.pulsec | $public_ports) and (.certbot.ports // [] | length == 0)"
+          sh -n deploy/certbot.sh
+          PULSEC_BEHIND_PROXY=true docker compose -f compose.yaml -f compose.local.yaml config --format json |
+            jq -e '.services | keys == ["pulsec"] and (.pulsec.command | index("-behind-proxy=true") != null)'
       - run: make tools
       - run: make check security
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -61,5 +60,5 @@ jobs:
       - name: Verify Caddy WebTransport proxy
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
-          docker build -f deploy/Dockerfile.caddy --output "type=local,dest=$RUNNER_TEMP/caddy-root" deploy
-          CADDY_BIN="$RUNNER_TEMP/caddy-root/usr/bin/caddy" PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh
+          GOBIN="$RUNNER_TEMP" go install github.com/caddyserver/caddy/v2/cmd/caddy@9ea3108377d2abec102866808133c40ac9582162
+          CADDY_BIN="$RUNNER_TEMP/caddy" PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh
