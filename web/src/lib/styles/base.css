@@ -1,0 +1,141 @@
+/* PulseC / Design2 — 共享样式
+ * 原则：一切对齐到字符栅格（ch）与 20px 行高；颜色只用于传达信息。
+ * 无圆角、无阴影、无渐变。唯一的纹理（警示斜纹）只在断线时出现。
+ */
+
+:root {
+  --bg: #0b0b0a; /* 底色：略暖的黑，长时间阅读不刺眼 */
+  --bg-1: #121210; /* 次级面：代码块、用户栏、悬停行 */
+  --bg-2: #1a1a17; /* 反选/选中行 */
+  --rule: #2a2a25; /* 1px 分隔线 */
+  --fg: #c9c6bb; /* 正文 */
+  --fg-1: #aca99d; /* 次要文字：系统消息 */
+  --fg-2: #918e83; /* 元数据：时间、行号、提示 */
+  --fg-3: #5f5d55; /* 更弱的元数据：秒位、连续发言的 trip */
+  --amber: #ffb000; /* 唯一强调色：品牌/提到你/焦点/选中 */
+  --red: #ff5f4a; /* 只用于错误、断线、冒名冲突 */
+  --whis: #c792ea; /* 私聊专用 */
+
+  /* 身份色：默认由 昵称#trip 哈希出色相（colors.js），所有客户端一致；
+   * /color 自选的颜色也在客户端钳制到可读亮度。经 --who 传给昵称与底纹 */
+
+  --lh: 20px;
+  --mono:
+    "JetBrains Mono", "IBM Plex Mono", "Sarasa Mono SC",
+    "Noto Sans Mono CJK SC", ui-monospace, "SFMono-Regular", Menlo, Consolas,
+    "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}
+body {
+  font: 14px/var(--lh) var(--mono);
+  font-variant-ligatures: none; /* 代码与哈希中禁止连字，避免误读 */
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--amber);
+  color: #000;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -1px;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+}
+
+.dim {
+  color: var(--fg-2);
+}
+.mid {
+  color: var(--fg-1);
+}
+.amb {
+  color: var(--amber);
+}
+.red {
+  color: var(--red);
+}
+
+/* 键位提示：只在有键盘的设备上出现 */
+kbd {
+  font: inherit;
+  color: var(--fg-1);
+}
+kbd::before {
+  content: "[";
+  color: var(--fg-2);
+}
+kbd::after {
+  content: "]";
+  color: var(--fg-2);
+}
+
+/* 通用的单行条：页眉、状态栏都是它 */
+.bar {
+  display: flex;
+  gap: 2ch;
+  align-items: center;
+  min-height: var(--lh);
+  padding: 0 1ch;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bar .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 按钮一律去掉浏览器外观，只保留文字 */
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: inherit;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+input[type="checkbox"] {
+  accent-color: var(--amber);
+}
+.language {
+  font: inherit;
+  color: var(--fg);
+  color-scheme: dark;
+  background: var(--bg-1);
+  border: 1px solid var(--rule);
+  padding: 2px 0.5ch;
+}
+.empty {
+  padding: 6px 1ch;
+  color: var(--fg-1);
+}

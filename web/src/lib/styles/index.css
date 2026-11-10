@@ -1,0 +1,5 @@
+/* PulseC 样式入口。顺序即层叠顺序：后面的文件覆盖前面同权重的规则 */
+@import "./base.css";
+@import "./chat.css";
+@import "./entrance.css";
+@import "./responsive.css";

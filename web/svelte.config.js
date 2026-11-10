@@ -5,9 +5,12 @@ import adapter from "@sveltejs/adapter-static";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const hash = createHash("sha256");
-const files = globSync(["src/**/*.*", "*.config.js", "package-lock.json"], {
-  cwd: root,
-}).sort();
+const files = globSync(
+  ["src/**/*.*", "*.config.js", "*.config.ts", "package-lock.json"],
+  {
+    cwd: root,
+  },
+).sort();
 for (const path of files) {
   hash
     .update(path)
@@ -17,6 +20,11 @@ for (const path of files) {
 }
 
 export default {
+  // Every project component uses runes; dependencies keep their own mode.
+  vitePlugin: {
+    dynamicCompileOptions: ({ filename }) =>
+      filename.includes("/node_modules/") ? undefined : { runes: true },
+  },
   kit: {
     adapter: adapter({ fallback: "index.html" }),
     version: { name: hash.digest("hex").slice(0, 16) },

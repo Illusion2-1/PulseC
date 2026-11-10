@@ -1,0 +1,130 @@
+import type { ClientCommand, ServerEvent, Status } from "../types";
+
+export interface TransportHandlers {
+  status(status: Status): void;
+  /** The stream is open; `boot` identifies this relay process. */
+  opened(boot: string): void;
+  received(event: ServerEvent): void;
+  /** Called every 10 s while connected. */
+  heartbeat(): void;
+}
+
+export interface Transport {
+  send(command: ClientCommand): void;
+  close(): void;
+}
+
+export type Connect = (handlers: TransportHandlers) => Transport;
+
+interface Attempt {
+  send?: (command: ClientCommand) => void;
+  close?: () => void;
+}
+
+// Each attempt owns its stream and timers. A retired session cannot write into its successor.
+// Failed attempts back off exponentially from 0.5 s to 15 s with ±20 % jitter.
+export const connect: Connect = ({ status, opened, received, heartbeat }) => {
+  let active: Attempt | null = null,
+    timer: ReturnType<typeof setTimeout> | undefined,
+    stopped = false,
+    delay = 500;
+  const encoder = new TextEncoder();
+  async function attempt() {
+    if (stopped) return;
+    if (!window.WebTransport) {
+      status("unsupported");
+      return;
+    }
+    let transport: WebTransport | undefined,
+      timeout: ReturnType<typeof setTimeout> | undefined,
+      pulse: ReturnType<typeof setInterval> | undefined,
+      writer: WritableStreamDefaultWriter<Uint8Array>;
+    const token: Attempt = {};
+    active = token;
+    status("connecting");
+    function fail() {
+      try {
+        transport?.close();
+      } catch {}
+    }
+    try {
+      const response = await fetch("/config", {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw Error();
+      const { pin, boot } = (await response.json()) as {
+        pin?: string;
+        boot: string;
+      };
+      if (stopped) return;
+      const options: WebTransportOptions = pin
+        ? {
+            serverCertificateHashes: [
+              {
+                algorithm: "sha-256" as const,
+                value: Uint8Array.from(atob(pin), (c) => c.charCodeAt(0)),
+              },
+            ],
+          }
+        : {};
+      transport = new WebTransport(
+        "https://" + location.host + "/connect",
+        options,
+      );
+      token.close = fail;
+      transport.closed.catch(() => {});
+      timeout = setTimeout(fail, 12000);
+      await transport.ready;
+      const stream = await transport.createBidirectionalStream();
+      writer = stream.writable.getWriter();
+      const reader = stream.readable
+        .pipeThrough(new TextDecoderStream())
+        .getReader();
+      clearTimeout(timeout);
+      let last = Date.now();
+      token.send = (cmd) =>
+        writer.write(encoder.encode(JSON.stringify(cmd) + "\n")).catch(fail);
+      opened(boot);
+      status("connected");
+      pulse = setInterval(() => {
+        if (Date.now() - last > 45000) fail();
+        else heartbeat();
+      }, 10000);
+      let buf = "";
+      while (!stopped) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += value;
+        let pos;
+        while ((pos = buf.indexOf("\n")) >= 0) {
+          last = Date.now();
+          delay = 500;
+          received(JSON.parse(buf.slice(0, pos)));
+          buf = buf.slice(pos + 1);
+        }
+      }
+    } catch {
+    } finally {
+      clearTimeout(timeout);
+      clearInterval(pulse);
+      active = null;
+      fail();
+      if (!stopped) {
+        status("reconnecting");
+        timer = setTimeout(attempt, delay * (0.8 + Math.random() * 0.4));
+        delay = Math.min(delay * 2, 15000);
+      }
+    }
+  }
+  attempt();
+  return {
+    send(cmd: ClientCommand) {
+      active?.send?.(cmd);
+    },
+    close() {
+      stopped = true;
+      clearTimeout(timer);
+      active?.close?.();
+    },
+  };
+};

@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "scripts": {
     "build": "vite build",
-    "check": "svelte-kit sync && svelte-check --no-tsconfig --fail-on-warnings",
-    "format:check": "prettier --check src/lib/*.js src/lib/*.svelte src/routes/*.js src/routes/*.svelte",
-    "test": "node --test",
+    "check": "svelte-kit sync && svelte-check --fail-on-warnings",
+    "format": "prettier --write \"src/**/*.{ts,js,svelte}\" \"test/**/*.ts\" \"*.config.{js,ts}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,svelte}\" \"test/**/*.ts\" \"*.config.{js,ts}\"",
+    "test": "vitest run",
     "lint": "oxlint --deny-warnings src test"
   },
   "type": "module",
@@ -13,13 +14,15 @@
     "@sveltejs/adapter-static": "^3.0.11",
     "@sveltejs/kit": "^2.70.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@types/node": "22.20.5",
     "oxlint": "1.92.0",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",
     "svelte": "^5.57.3",
     "svelte-check": "4.7.8",
     "typescript": "5.9.3",
-    "vite": "^7.3.7"
+    "vite": "^7.3.7",
+    "vitest": "5.1.0"
   },
   "private": true,
   "overrides": {

@@ -1,0 +1,173 @@
+/* 与聊天页共用同一套框架：页眉、标签栏、主区、侧栏、状态栏、键位栏 */
+.app.lobby {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 1fr 34ch;
+  grid-template-areas: "head head" "tabs tabs" "log users" "stat stat" "keys keys";
+}
+.lobby .tab {
+  cursor: default;
+}
+.gate {
+  padding: 12px 2ch 24px;
+}
+.gate > * {
+  max-width: 72ch;
+}
+.gate h2 {
+  font: inherit;
+  color: var(--fg-2);
+  margin: 20px 0 0;
+  display: flex;
+  gap: 1ch;
+}
+.gate h2::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--rule);
+  transform: translateY(-50%);
+}
+.gate .intro {
+  color: var(--fg);
+  font-size: 1.45em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+.gate .mark {
+  color: var(--amber);
+}
+.gate p {
+  color: var(--fg-1);
+}
+.gate .forget {
+  margin-top: 12px;
+  padding: 4px 0;
+  color: var(--fg-1);
+  text-decoration: underline;
+}
+.gate .net-hint {
+  color: var(--red);
+  margin-top: 8px;
+}
+.lobby .users h3:not(:first-child) {
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+
+/* 频道行：名称 · 近 10 分钟活跃度 · 在线人数，主题另起一行 */
+.c {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3ch;
+  column-gap: 1ch;
+  width: 100%;
+  padding: 0 1ch;
+  line-height: var(--lh);
+}
+.c:hover {
+  background: var(--bg-1);
+}
+.c .cn {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.c .cn::before {
+  content: " ";
+  white-space: pre;
+}
+.c .pulse {
+  color: var(--fg-2);
+  letter-spacing: -1px;
+  white-space: pre;
+}
+.c .co {
+  text-align: right;
+  color: var(--fg-1);
+}
+.c .lk {
+  color: var(--fg-2);
+}
+.c .ct {
+  grid-column: 1 / -1;
+  padding-left: 1ch;
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.c.sel {
+  background: var(--bg-2);
+}
+.c.sel .cn {
+  color: var(--amber);
+}
+.c.sel .cn::before {
+  content: "▸";
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 12ch 1fr;
+  column-gap: 1ch;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.field label {
+  color: var(--fg-2);
+}
+.field input {
+  all: unset;
+  font: inherit;
+  color: var(--fg);
+  caret-color: var(--amber);
+  width: 100%;
+  min-width: 0;
+}
+.field input::placeholder {
+  color: var(--fg-2);
+}
+.field:focus-within {
+  border-bottom-color: var(--amber);
+}
+.field:focus-within label {
+  color: var(--amber);
+}
+.field .hint {
+  grid-column: 2;
+  color: var(--fg-2);
+}
+/* 接入按钮写成与聊天输入行一致的提示符 */
+.go {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 1ch;
+  min-height: 36px;
+  background: var(--bg-1);
+  border: 1px solid var(--amber);
+  color: var(--fg);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.go:not(:disabled):hover,
+.go:focus-visible {
+  background: var(--amber);
+  color: #000;
+  outline: 0;
+}
+.go:not(:disabled):hover span,
+.go:focus-visible span {
+  color: #000;
+}
+.err {
+  color: var(--red);
+}
+.settings {
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--fg-1);
+}

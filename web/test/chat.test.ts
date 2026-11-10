@@ -1,0 +1,390 @@
+import { afterEach, test } from "vitest";
+import assert from "node:assert/strict";
+import { ChatClient } from "../src/lib/chat/client.svelte";
+import { parseCommand } from "../src/lib/chat/commands";
+import { describeModeration, resolveTarget } from "../src/lib/chat/moderation";
+import { Outbox, deliveryUnknown } from "../src/lib/chat/outbox.svelte";
+import type { Outgoing, RoomState } from "../src/lib/types";
+import { makeClient, member, signedIn, snapshot, trip } from "./helpers";
+
+const stops: (() => void)[] = [];
+afterEach(() => stops.splice(0).forEach((stop) => stop()));
+function chat(...args: Parameters<typeof signedIn>) {
+  const ctx = signedIn(...args);
+  stops.push(ctx.stop);
+  return ctx;
+}
+const say = (client: ChatClient, text: string) => {
+  client.composer.draft = text;
+  client.submit();
+};
+const last = (client: ChatClient) => client.room!.log.at(-1)!;
+
+test("retry within the same relay's two-minute window", () => {
+  const msg = { boot: "a", attempt: 1000 };
+  assert.equal(deliveryUnknown(msg, "a", 121000), false);
+  assert.equal(deliveryUnknown(msg, "a", 121001), true);
+  assert.equal(deliveryUnknown(msg, "b", 1100), true);
+  assert.equal(deliveryUnknown({}, "b", 123000), false);
+});
+
+test("the outbox keeps the send in flight and drops the rest of a parted room", () => {
+  const box = new Outbox();
+  const q = (id: string, room: string) =>
+    ({
+      id,
+      room,
+      op: "send",
+      kind: "chat",
+      text: "",
+      to: "",
+      raw: id,
+      nick: "",
+      created: 0,
+    }) as Outgoing;
+  box.queue = [q("1", "a"), q("2", "a"), q("3", "b")];
+  box.inflight = "1";
+  assert.deepEqual(
+    box.drop("a").map((m) => m.id),
+    ["2"],
+  );
+  assert.deepEqual(
+    box.queue.map((m) => m.id),
+    ["1", "3"],
+  );
+  assert.equal(box.left(0), 6);
+  for (let i = 0; i < 6; i++) box.acked("x", 1000 + i);
+  assert.equal(box.left(1010), 0);
+  assert.equal(box.left(11006), 6, "the window slides");
+});
+
+test("a draft is queued, transmitted once joined and logged on ack", () => {
+  const { client, relay } = chat();
+  assert.deepEqual(relay.ops("join"), [
+    { op: "join", room: "lobby", public: false },
+  ]);
+  assert.equal(last(client).code, "joinedRoom");
+  say(client, "hello");
+  assert.equal(client.composer.draft, "");
+  const [sent] = relay.ops("send");
+  assert.equal(sent.text, "hello");
+  assert.equal(client.outbox.inflight, sent.id);
+  relay.emit({ op: "ack", id: sent.id, ref: "0123456789ab" });
+  assert.equal(client.outbox.queue.length, 0);
+  assert.equal(last(client).text, "hello");
+  assert.equal(last(client).trip, trip("a"));
+  assert.equal(client.composer.lastInput, "hello");
+});
+
+test("an unconfirmed send is retried on the same relay and abandoned after a restart", () => {
+  const { client, relay } = chat();
+  say(client, "once");
+  relay.drop();
+  assert.equal(client.room!.joined, false);
+  relay.connect("boot-1");
+  relay.emit(snapshot("lobby"));
+  assert.equal(last(client).code, "rejoined");
+  assert.equal(relay.ops("send").length, 2, "same relay: retried");
+  assert.equal(relay.ops("send")[0].id, relay.ops("send")[1].id);
+
+  relay.drop();
+  relay.connect("boot-2");
+  relay.emit(snapshot("lobby"));
+  assert.equal(relay.ops("send").length, 2, "new relay: not retried");
+  assert.equal(client.outbox.queue.length, 0);
+  assert.equal(last(client).code, "uncertain");
+});
+
+test("commands keep a draft that needs correcting", () => {
+  const { client, relay } = chat();
+  say(client, "/nope x");
+  assert.equal(client.composer.draft, "/nope x");
+  assert.equal(last(client).code, "unknownCommand");
+  say(client, "/w neo");
+  assert.equal(client.composer.draft, "/w neo");
+  assert.equal(last(client).code, "whisperUsage");
+  say(client, "/w neo#" + trip("b") + " psst");
+  const [w] = relay.ops("send");
+  assert.deepEqual(
+    [w.kind, w.to, w.text],
+    ["whisper", "neo#" + trip("b"), "psst"],
+  );
+  say(client, "//root");
+  assert.equal(relay.ops("send").length, 1, "the whisper is still in flight");
+  assert.equal(client.outbox.queue[1].text, "/root");
+  say(client, "/me");
+  assert.equal(last(client).code, "needText");
+  assert.equal(client.composer.draft, "");
+});
+
+test("command parsing leaves // and plain text alone", () => {
+  assert.deepEqual(parseCommand("/join  #x"), { name: "/join", arg: "#x" });
+  assert.deepEqual(parseCommand("/me\nwaves"), { name: "/me", arg: "waves" });
+  assert.equal(parseCommand("//not"), null);
+  assert.equal(parseCommand("hi /there"), null);
+});
+
+test("moderation targets resolve to one trip", () => {
+  const state: RoomState = {
+    users: [
+      member(1, "neo", trip("a")),
+      member(2, "neo", trip("b")),
+      member(3, "amy", trip("c")),
+    ],
+    topic: "",
+    pulse: [],
+    banned: [trip("d")],
+  };
+  assert.deepEqual(resolveTarget(state, "amy"), { trip: trip("c") });
+  assert.deepEqual(resolveTarget(state, "neo"), { error: "ambiguousTarget" });
+  assert.deepEqual(resolveTarget(state, "neo#" + trip("b")), {
+    trip: trip("b"),
+  });
+  assert.deepEqual(resolveTarget(state, trip("e")), { trip: trip("e") });
+  assert.deepEqual(resolveTarget(state, "dddd", true), { trip: trip("d") });
+  assert.deepEqual(resolveTarget(state, "dddd"), { error: "needTarget" });
+  assert.deepEqual(resolveTarget(state, " "), { error: "needTarget" });
+});
+
+test("moderation events name the actor and notice removal of this tab", () => {
+  const e = {
+    op: "moderation" as const,
+    room: "r",
+    action: "kick" as const,
+    by: { nick: "op", trip: trip("o") },
+    target: trip("a"),
+    nick: "me",
+    on: false,
+    rate: 0,
+  };
+  assert.deepEqual(describeModeration(e, trip("a")), {
+    code: "modKick",
+    params: { by: "op#ooooo", target: "me#aaaaa", rate: 0 },
+    removed: "youKicked",
+  });
+  assert.equal(
+    describeModeration({ ...e, action: "lock", on: true }, "").code,
+    "modLock",
+  );
+  assert.equal(
+    describeModeration({ ...e, action: "slow", on: false }, "").code,
+    "modSlowOff",
+  );
+});
+
+test("a kicked tab stays open for reading and refuses new sends", () => {
+  const { client, relay } = chat("room");
+  relay.emit({
+    op: "moderation",
+    room: "room",
+    action: "kick",
+    by: { nick: "op", trip: trip("o") },
+    target: trip("a"),
+    nick: "me",
+    on: false,
+    rate: 0,
+  });
+  assert.equal(client.room!.parted, true);
+  assert.equal(last(client).code, "youKicked");
+  say(client, "still here?");
+  assert.equal(client.composer.draft, "still here?");
+  assert.equal(last(client).code, "parted");
+  assert.equal(relay.ops("send").length, 0);
+});
+
+test("admin commands check rights locally and ask before a ban", () => {
+  let asked = "";
+  const { client, relay } = chat("room", {
+    confirm: (message) => ((asked = message), false),
+  });
+  say(client, "/kick amy");
+  assert.equal(last(client).code, "needTarget");
+  relay.emit(
+    snapshot("room", [member(1, "me", trip("a")), member(2, "amy", trip("c"))]),
+  );
+  say(client, "/kick amy");
+  assert.equal(last(client).code, "not_admin");
+  relay.emit(
+    snapshot(
+      "room",
+      [member(1, "me", trip("a")), member(2, "amy", trip("c"))],
+      {
+        owner: trip("a"),
+      },
+    ),
+  );
+  say(client, "/ban amy");
+  assert.match(asked, /amy/);
+  assert.equal(relay.ops("moderate").length, 0, "declined");
+  say(client, "/kick amy");
+  assert.deepEqual(relay.ops("moderate"), [
+    { op: "moderate", room: "room", action: "kick", target: trip("c") },
+  ]);
+});
+
+test("background channels count unread rows and mentions", () => {
+  const { client, relay } = chat("one");
+  client.join("two");
+  relay.emit(snapshot("two"));
+  assert.equal(client.current, "two");
+  const message = (text: string, room = "one") =>
+    relay.emit({
+      op: "message",
+      room,
+      ref: "",
+      nick: "neo",
+      trip: trip("b"),
+      kind: "chat",
+      text,
+      time: Date.now(),
+    });
+  message("hi");
+  message("@me look");
+  const one = client.rooms.get("one")!;
+  assert.equal(one.unread, 2);
+  assert.equal(one.mentioned, true);
+  assert.equal(client.pending, 2);
+  assert.equal(client.pinged, true);
+  client.select("one");
+  assert.equal(one.unread, 0);
+  assert.equal(client.unreadCount, 2);
+  assert.equal(client.firstUnread?.text, "hi");
+  assert.equal(client.pending, 0);
+});
+
+test("ignored trips are dropped and duplicate refs are not logged twice", () => {
+  const { client, relay } = chat();
+  const base = {
+    op: "message" as const,
+    room: "lobby",
+    nick: "x",
+    kind: "chat" as const,
+    time: Date.now(),
+  };
+  relay.emit({ ...base, ref: "aaaaaaaaaaaa", trip: trip("b"), text: "one" });
+  relay.emit({ ...base, ref: "aaaaaaaaaaaa", trip: trip("b"), text: "one" });
+  say(client, "/ignore x#" + trip("b"));
+  relay.emit({ ...base, ref: "bbbbbbbbbbbb", trip: trip("b"), text: "two" });
+  assert.equal(client.room!.log.filter((m) => m.text === "one").length, 1);
+  assert.equal(
+    client.room!.log.some((m) => m.text === "two"),
+    false,
+  );
+  assert.equal(
+    client.items.some((m) => m.text === "one"),
+    false,
+    "hidden from view",
+  );
+});
+
+test("presence rows within ten seconds merge into one", () => {
+  const { client, relay } = chat();
+  const join = (id: number, nick: string) =>
+    relay.emit({
+      op: "member",
+      room: "lobby",
+      action: "join",
+      user: member(id, nick),
+      text: "+ " + nick,
+    });
+  join(2, "amy");
+  join(3, "bob");
+  const row = last(client);
+  assert.equal(row.kind, "presence");
+  assert.equal(row.parts?.length, 2);
+  assert.equal(client.state.users.length, 3);
+});
+
+test("a rejected send restores the draft and keeps the input in the notice", () => {
+  const { client, relay } = chat();
+  say(client, "too much");
+  const [sent] = relay.ops("send");
+  relay.emit({ op: "error", id: sent.id, code: "room_muted", request: "send" });
+  assert.equal(client.composer.draft, "too much");
+  assert.equal(last(client).unsent, "too much");
+  assert.equal(last(client).warn, true);
+  assert.equal(client.outbox.queue.length, 0);
+});
+
+test("a rate-limited send waits and the local burst limit keeps the draft", () => {
+  const { client, relay } = chat();
+  say(client, "slow");
+  const [sent] = relay.ops("send");
+  relay.emit({ op: "limited", id: sent.id, wait: 2000 });
+  assert.equal(client.outbox.inflight, "");
+  assert.equal(client.outbox.queue[0].attempt, undefined);
+  assert.ok(client.outbox.until > Date.now());
+  client.outbox.until = 0;
+  client.flush();
+  relay.emit({ op: "ack", id: sent.id, ref: "" });
+  for (let i = 0; i < 5; i++) {
+    say(client, "m" + i);
+    const m = relay.ops("send").at(-1)!;
+    relay.emit({ op: "ack", id: m.id, ref: "" });
+  }
+  assert.equal(client.left, 0);
+  say(client, "seventh");
+  assert.equal(last(client).code, "retained");
+  assert.equal(client.composer.draft, "seventh");
+});
+
+test("a locked room parts the tab and suggests a retry", () => {
+  const { client, relay } = chat();
+  client.join("closed");
+  relay.emit({
+    op: "error",
+    code: "room_locked",
+    request: "join",
+    room: "closed",
+  });
+  const room = client.rooms.get("closed")!;
+  assert.equal(room.parted, true);
+  assert.deepEqual(
+    room.log.slice(-2).map((m) => m.code),
+    ["room_locked", "retryJoin"],
+  );
+});
+
+test("leaving waits for pending sends; leaving the last tab signs out", () => {
+  let reloaded = false;
+  const { client, relay, session } = chat("lobby", {
+    reload: () => (reloaded = true),
+  });
+  say(client, "wait");
+  client.leave();
+  assert.equal(last(client).code, "leavePending");
+  relay.emit({ op: "ack", id: relay.ops("send")[0].id, ref: "" });
+  client.leave();
+  assert.deepEqual(relay.ops("leave"), [{ op: "leave", room: "lobby" }]);
+  assert.equal(client.current, "");
+  assert.equal(client.identity, null);
+  assert.equal(reloaded, true);
+  assert.equal(JSON.parse(session.get("pulsec.session")!).identity, null);
+});
+
+test("a refresh restores identity, tabs, history and the queue", () => {
+  const { client, relay, session, local } = chat("lobby");
+  client.join("two");
+  relay.emit(snapshot("two"));
+  relay.drop();
+  say(client, "after refresh");
+  const next = makeClient({ session, local });
+  next.client.restore();
+  assert.equal(next.client.identity?.nick, "me");
+  assert.deepEqual([...next.client.rooms.keys()], ["lobby", "two"]);
+  assert.equal(next.client.current, "two");
+  assert.equal(next.client.rooms.get("lobby")!.log[0].code, "joinedRoom");
+  assert.equal(next.client.outbox.queue[0].raw, "after refresh");
+  assert.deepEqual(next.client.known, ["two", "lobby"]);
+});
+
+test("/forget clears chat data after confirmation", () => {
+  let restarted = false;
+  const { client, session, local } = chat("lobby", {
+    restart: () => (restarted = true),
+  });
+  say(client, "/forget");
+  assert.equal(restarted, true);
+  assert.equal(session.get("pulsec.session"), null);
+  assert.equal(local.get("pulsec.channels"), null);
+});

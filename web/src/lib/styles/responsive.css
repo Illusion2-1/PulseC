@@ -1,0 +1,159 @@
+/* 移动端（≤720px）与触屏、极窄屏的调整。放在最后，覆盖前面同权重的规则 */
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-areas: "head" "tabs" "log" "stat" "input" "keys";
+  }
+  .head {
+    gap: 0.75ch;
+  }
+  .head .wide,
+  .head time,
+  .input .wide,
+  .input .ps small {
+    display: none;
+  }
+  .tab,
+  .utog,
+  .language,
+  .tok {
+    min-height: 32px;
+  }
+  .ln .lf {
+    grid-template-columns: 5ch 8ch;
+  } /* 5ch 放得下完整的短 trip */
+  .ln .tm {
+    display: none;
+  } /* 窄屏省掉时间列，改由时间刻度行承担 */
+  .tick {
+    display: flex;
+  }
+  .users {
+    display: none;
+    position: absolute;
+    top: 64px;
+    right: 0;
+    bottom: 85px;
+    width: 28ch;
+    max-width: 100%;
+    border-left: 1px solid var(--amber);
+    z-index: 4;
+  }
+  .app.show-users .users {
+    display: block;
+  }
+  .users .utog {
+    display: block;
+    margin: 8px 1ch;
+  }
+  .app {
+    position: relative;
+  }
+  .utog {
+    display: inline;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .stat {
+    flex-wrap: wrap;
+    gap: 0 1ch;
+  }
+  .stat .wide {
+    display: none;
+  }
+  .stat .pulse {
+    font-size: 9px;
+  }
+  .stat .rtt {
+    margin-left: auto;
+  }
+  .keys {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    overflow-x: auto;
+    height: auto;
+  }
+  .keys .kb {
+    display: none;
+  }
+  .keys .tok {
+    display: block;
+    padding: 0 1.5ch;
+    line-height: 32px;
+    border-right: 1px solid var(--rule);
+    color: var(--fg-1);
+    cursor: pointer;
+  }
+  .keys .tok:active {
+    background: var(--amber);
+    color: #000;
+  }
+  .keys .tok {
+    flex-shrink: 0;
+  }
+  .input {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, auto) minmax(4ch, 1fr) auto;
+  }
+  .input .ps {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 8ch;
+  }
+  .ack {
+    display: block;
+  }
+  .pop {
+    min-width: 0;
+    max-width: calc(100% - 2ch);
+  }
+  .field {
+    grid-template-columns: 9ch 1fr;
+  }
+  /* 入口页窄屏：单列滚动，频道列表接在表单之后，状态栏贴底 */
+  .app.lobby {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-rows: auto;
+    grid-template-columns: 1fr;
+    grid-template-areas: "head" "tabs" "log" "users" "stat" "keys";
+  }
+  .lobby .log {
+    overflow: visible;
+  }
+  .lobby .users {
+    display: block;
+    position: static;
+    width: auto;
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .lobby .stat {
+    position: sticky;
+    bottom: 0;
+  }
+  .lobby .keys {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .input textarea,
+  .field input {
+    font-size: 16px;
+  } /* iOS 小于 16px 会在聚焦时自动缩放页面 */
+}
+@media (max-width: 340px) {
+  .stat .pulse,
+  .input .ps {
+    display: none;
+  }
+  .ln .lf {
+    grid-template-columns: 3ch 6ch;
+  }
+  .input {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
