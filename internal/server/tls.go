@@ -31,7 +31,7 @@ func loadCertificate(cfg Config) (tls.Certificate, string, error) {
 		return cert, "", err
 	}
 	if cfg.CertFile != "" || cfg.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		cert, err := readOperatorPair(cfg)
 		return cert, "", err
 	}
 	host, _, err := net.SplitHostPort(cfg.Addr)
@@ -41,18 +41,39 @@ func loadCertificate(cfg Config) (tls.Certificate, string, error) {
 	return localCert()
 }
 
-// A dangling file symlink is a broken installation, not a fresh issuance.
-func missingPair(cfg Config, loadErr error) (bool, error) {
-	for _, path := range []string{cfg.CertFile, cfg.KeyFile} {
-		_, err := os.Lstat(path)
-		if err == nil {
-			return false, loadErr
+// An atomic rename publishes the combined PEM used by the direct deployment.
+func readOperatorPair(cfg Config) (tls.Certificate, error) {
+	if cfg.CertFile == cfg.KeyFile {
+		pem, err := os.ReadFile(cfg.CertFile) // #nosec G304 -- configured by the server operator
+		if err != nil {
+			return tls.Certificate{}, err
 		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return false, err
-		}
+		return tls.X509KeyPair(pem, pem)
 	}
-	return true, nil
+	return tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+}
+
+// A dangling file symlink is a broken installation, not a fresh issuance.
+func missingPair(cfg Config) (bool, error) {
+	absent := func(path string) (bool, error) {
+		_, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return false, err
+	}
+	missingCert, err := absent(cfg.CertFile)
+	if err != nil || cfg.CertFile == cfg.KeyFile {
+		return missingCert, err
+	}
+	missingKey, err := absent(cfg.KeyFile)
+	if err != nil {
+		return false, err
+	}
+	if missingCert != missingKey {
+		return false, errors.New("incomplete initial TLS certificate/key pair")
+	}
+	return missingCert, nil
 }
 
 func localCert() (tls.Certificate, string, error) {

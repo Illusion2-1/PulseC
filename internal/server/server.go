@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -39,26 +41,42 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, relo
 	if err != nil {
 		return err
 	}
-	cert, pin, err := loadCertificate(cfg)
+	var cert tls.Certificate
+	var pin string
 	waiting := false
-	if direct && errors.Is(err, os.ErrNotExist) {
-		waiting, err = missingPair(cfg, err)
+	if direct && !cfg.BehindProxy {
+		waiting, err = missingPair(cfg)
+		if err != nil {
+			return err
+		}
 	}
-
-	if err != nil {
-		return err
+	if !waiting {
+		cert, pin, err = loadCertificate(cfg)
+		if err != nil {
+			return err
+		}
 	}
 	result := make(chan error, 3)
+	var checks <-chan time.Time
+	var watch *time.Ticker
+	const renewalInterval = 30 * time.Second
 	if direct {
 		stopHTTP, err := startChallenge(cfg, result, logger)
 		if err != nil {
 			return err
 		}
 		defer stopHTTP()
+		interval := renewalInterval
+		if waiting {
+			interval = 5 * time.Second
+		}
+		watch = time.NewTicker(interval)
+		defer watch.Stop()
+		checks = watch.C
 	}
 	if waiting {
-		logger.Print("waiting for initial TLS certificate; send SIGHUP after issuance")
-		for waiting {
+		logger.Print("waiting for initial TLS certificate")
+		for {
 			select {
 			case <-ctx.Done():
 				return nil
@@ -69,15 +87,18 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, relo
 					reload = nil
 					continue
 				}
-				cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-				if err != nil {
-					logger.Printf("certificate reload failed: %v", err)
-					continue
-				}
-				waiting = false
-				logger.Print("initial TLS certificate loaded")
+			case <-checks:
+			}
+			cert, err = readOperatorPair(cfg)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				logger.Printf("certificate reload failed: %v", err)
 			}
 		}
+		watch.Reset(renewalInterval)
+		logger.Print("initial TLS certificate loaded")
 	}
 	local := pin != ""
 	// ServeTLS and HTTP/3 clone this config. Both clones consult the same
@@ -132,6 +153,7 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, relo
 		}
 	}()
 	for {
+		polled := false
 		select {
 		case err := <-result:
 			return err
@@ -142,18 +164,24 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, relo
 				reload = nil
 				continue
 			}
-			// The development certificate pin belongs to this process lifetime.
-			if local || cfg.BehindProxy {
-				continue
-			}
-			pair, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-			if err != nil {
-				logger.Printf("certificate reload failed: %v", err)
-				continue
-			}
-			current.Store(&pair)
-			logger.Print("certificate reloaded")
+		case <-checks:
+			polled = true
 		}
+		if local || cfg.BehindProxy {
+			continue
+		}
+		pair, err := readOperatorPair(cfg)
+		if err != nil {
+			logger.Printf("certificate reload failed: %v", err)
+			continue
+		}
+		// Compare the whole chain, including intermediates. An explicit HUP
+		// still acknowledges a successful read when the files are unchanged.
+		if polled && slices.EqualFunc(current.Load().Certificate, pair.Certificate, bytes.Equal) {
+			continue
+		}
+		current.Store(&pair)
+		logger.Print("certificate reloaded")
 	}
 }
 func maintain(ctx context.Context, h *chat.Hub, g *ingress, interval time.Duration, logger *log.Logger) {

@@ -3,16 +3,14 @@ package qa
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
@@ -21,8 +19,8 @@ import (
 
 func TestDirectHTTP01Bootstrap(t *testing.T) {
 	bin := os.Getenv("PULSEC_BIN")
-	if bin == "" || runtime.GOOS == "windows" {
-		t.Skip("requires candidate executable and Unix signals")
+	if bin == "" {
+		t.Skip("set PULSEC_BIN to an absolute path to the candidate")
 	}
 	// Reserve two distinct addresses while generating fixture paths.
 	choose := func() net.Listener {
@@ -36,13 +34,16 @@ func TestDirectHTTP01Bootstrap(t *testing.T) {
 	plain, secure := first.Addr().String(), second.Addr().String()
 	root := t.TempDir()
 	challenge := filepath.Join(root, ".well-known", "acme-challenge")
-	cert := filepath.Join(t.TempDir(), "chain.pem")
-	key := filepath.Join(t.TempDir(), "key.pem")
-	issuedCert, issuedKey, roots := testCertificate(t, 3)
-	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
+	published, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = published.Close() }()
+	bundle := filepath.Join(published.Name(), "site.pem")
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Second)
 	defer cancel()
 	// #nosec G204 G702 -- the operator supplies this local QA artifact.
-	proc := exec.CommandContext(ctx, bin, "-addr", secure, "-http-addr", plain, "-public-host", "chat.example.test", "-acme-webroot", root, "-cert", cert, "-key", key)
+	proc := exec.CommandContext(ctx, bin, "-addr", secure, "-http-addr", plain, "-public-host", "chat.example.test", "-acme-webroot", root, "-cert", bundle, "-key", bundle)
 	proc.Dir = t.TempDir()
 	proc.Env = []string{"PATH=" + proc.Dir}
 	if err := first.Close(); err != nil {
@@ -105,44 +106,52 @@ func TestDirectHTTP01Bootstrap(t *testing.T) {
 	}
 	testChallenge()
 
-	if err := os.Rename(issuedCert, cert); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(issuedKey, key); err != nil {
-		t.Fatal(err)
-	}
-	if err := proc.Process.Signal(syscall.SIGHUP); err != nil {
-		t.Fatal(err)
+	// Certbot publishes the chain and key together with one rename. No process
+	// signal or container restart occurs on either publication.
+	publish := func(serial int64) *x509.CertPool {
+		t.Helper()
+		cert, key, roots := testPEM(t, serial)
+		if err := published.WriteFile("site.tmp", append(cert, key...), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := published.Rename("site.tmp", "site.pem"); err != nil {
+			t.Fatal(err)
+		}
+		return roots
 	}
 	origin := "https://" + secure
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}
-	https := http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig}}
-	defer https.CloseIdleConnections()
-	for end := time.Now().Add(4 * time.Second); time.Now().Before(end); {
-		response, err = https.Get(origin + "/config")
-		if err == nil {
-			break
+	waitForHandshake := func(roots *x509.CertPool, timeout time.Duration) string {
+		t.Helper()
+		cfg := &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}
+		https := http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: cfg, DisableKeepAlives: true}}
+		deadline := time.Now().Add(timeout)
+		for {
+			res, err := https.Get(origin + "/config")
+			if err == nil {
+				var state struct{ Boot, Pin string }
+				err = json.NewDecoder(res.Body).Decode(&state)
+				_ = res.Body.Close()
+				if err != nil || res.StatusCode != 200 || state.Boot == "" || state.Pin != "" {
+					t.Fatal("invalid public TLS config", err)
+				}
+				tr := wt.Transport{TLSClientConfig: cfg.Clone()}
+				defer func() { _ = tr.Close() }()
+				_, session, err := tr.Dial(ctx, origin+"/connect", http.Header{"Origin": {origin}})
+				if err != nil {
+					t.Fatal("QUIC certificate did not match HTTPS certificate", err)
+				}
+				_ = session.CloseWithError(0, "done")
+				return state.Boot
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("published certificate was not activated", err)
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		if !errors.Is(err, syscall.ECONNREFUSED) {
-			t.Fatal("secure startup", err)
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
-	if err != nil {
-		t.Fatal(err)
+	boot := waitForHandshake(publish(3), 8*time.Second)
+	if got := waitForHandshake(publish(4), 35*time.Second); got != boot {
+		t.Fatal("restart during certificate rotation")
 	}
-	var cfg struct{ Boot, Pin string }
-	err = json.NewDecoder(response.Body).Decode(&cfg)
-	_ = response.Body.Close()
-	if err != nil || response.StatusCode != 200 || cfg.Boot == "" || cfg.Pin != "" {
-		t.Fatal("missing production HTTPS configuration", err)
-	}
-	tr := wt.Transport{TLSClientConfig: tlsConfig.Clone()}
-	defer func() { _ = tr.Close() }()
-	_, session, err := tr.Dial(ctx, origin+"/connect", http.Header{"Origin": {origin}})
-	if err != nil {
-		t.Fatal("QUIC did not serve issued certificate", err)
-	}
-	_ = session.CloseWithError(0, "done")
-	testChallenge() // Port 80 stays available for renewal.
+	testChallenge()
 }

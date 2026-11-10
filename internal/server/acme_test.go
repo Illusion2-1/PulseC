@@ -47,19 +47,18 @@ func TestDirectModeRequiresExplicitOptions(t *testing.T) {
 func TestBootstrapRequiresBothFilesAbsent(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{CertFile: filepath.Join(dir, "fullchain"), KeyFile: filepath.Join(dir, "key")}
-	loadErr := os.ErrNotExist
-	if missing, err := missingPair(cfg, loadErr); err != nil || !missing {
+	if missing, err := missingPair(cfg); err != nil || !missing {
 		t.Fatal(missing, err)
 	}
 	if err := os.WriteFile(cfg.KeyFile, []byte("not a PEM"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if missing, err := missingPair(cfg, loadErr); err == nil || missing {
+	if missing, err := missingPair(cfg); err == nil || missing {
 		t.Fatal("allowed partially installed pair")
 	}
 	// A non-directory in a path causes ENOTDIR, not an absent pair.
 	cfg.KeyFile = filepath.Join(cfg.KeyFile, "file")
-	if missing, err := missingPair(cfg, loadErr); err == nil || errors.Is(err, os.ErrNotExist) || missing {
+	if missing, err := missingPair(cfg); err == nil || errors.Is(err, os.ErrNotExist) || missing {
 		t.Fatal("silenced a stat error", err)
 	}
 }
