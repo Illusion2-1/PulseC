@@ -40,6 +40,10 @@ type DirectoryRoom struct {
 	Locked bool    `json:"locked,omitempty"`
 }
 
+func Connection(transport, encryption string) []byte {
+	return frame(map[string]string{"op": "connection", "transport": transport, "encryption": encryption})
+}
+
 func Directory(rooms []DirectoryRoom, online, uptime int) []byte {
 	return frame(map[string]any{"op": "directory", "rooms": rooms, "online": online, "uptime": uptime})
 }

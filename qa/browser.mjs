@@ -70,6 +70,7 @@ try {
   browser = await chromium.launch({ channel: "chrome", executablePath: process.env.CHROME_BIN,
     args: ["--no-proxy-server"], headless: true });
   const alice = await page("Alice");
+  await alice.locator(".head").getByText("WebTransport · TLS 1.3", {exact: true}).waitFor();
   const bob = await page("Bob", "zh-CN", base + 1, 360);
   await alice.waitForFunction(() => document.querySelectorAll(".u").length === 2);
   for (let i = 0; i < 6; i++) await send(alice, "release-check-" + i);

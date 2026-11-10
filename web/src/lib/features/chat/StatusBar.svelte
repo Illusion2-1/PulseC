@@ -1,6 +1,5 @@
 <script lang="ts">
   import { useChat } from "$lib/chat/context";
-  import { limits } from "$lib/config";
   import { averageRate, spark } from "$lib/core/text";
   import { t } from "$lib/i18n/locale.svelte";
 
@@ -30,8 +29,8 @@
     ></span
   ><span class="grow"
     >{#if chat.cacheError}<span class="warnText">{t(chat.cacheError)}</span
-      >{:else}<span class="k">{t("cache")}</span>
-      {chat.items.length}/{limits.history}{/if}</span
+      >{:else}<span class="k">{t("records")}</span>
+      {chat.room?.total ?? 0}{/if}</span
   ><span class="rtt"
     ><span class="k">rtt</span>
     {chat.rtt === null ? "—" : chat.rtt + " ms"}</span

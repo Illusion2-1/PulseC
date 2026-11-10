@@ -83,7 +83,7 @@ export const messages = {
   active: ["活跃", "Active"],
   close: ["收起", "Close"],
   members: ["{count} 人", "{count} online"],
-  cache: ["本地", "Local"],
+  records: ["记录", "Rows"],
   pulseLabel: ["脉冲", "Pulse"],
   perMinute: ["{rate}/分", "{rate}/min"],
   onlineLabel: ["在线", "Online"],

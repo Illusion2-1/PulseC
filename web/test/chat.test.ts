@@ -4,6 +4,7 @@ import { ChatClient } from "../src/lib/chat/client.svelte";
 import { parseCommand } from "../src/lib/chat/commands";
 import { describeModeration, resolveTarget } from "../src/lib/chat/moderation";
 import { Outbox, deliveryUnknown } from "../src/lib/chat/outbox.svelte";
+import { limits } from "../src/lib/config";
 import type { Outgoing, RoomState } from "../src/lib/types";
 import { makeClient, member, signedIn, snapshot, trip } from "./helpers";
 
@@ -19,6 +20,74 @@ const say = (client: ChatClient, text: string) => {
   client.submit();
 };
 const last = (client: ChatClient) => client.room!.log.at(-1)!;
+
+test("connection details follow the live relay and clear on disconnect", () => {
+  const { client, relay } = chat();
+  assert.equal(client.connection, null, "older relays have no details");
+  relay.emit({
+    op: "connection",
+    transport: "WebTransport",
+    encryption: "TLS 1.3",
+  });
+  assert.deepEqual(client.connection, {
+    transport: "WebTransport",
+    encryption: "TLS 1.3",
+  });
+  relay.drop();
+  assert.equal(client.connection, null);
+  relay.connect();
+  assert.equal(client.connection, null);
+  relay.emit({
+    op: "connection",
+    transport: "WebSocket",
+    encryption: "TLS 1.2",
+  });
+  assert.deepEqual(client.connection, {
+    transport: "WebSocket",
+    encryption: "TLS 1.2",
+  });
+});
+
+test("row totals keep increasing past retained history and survive refresh", () => {
+  const { client, session, local } = chat();
+  client.clearLog();
+  for (let i = 0; i < limits.history + 2; i++)
+    client.add("lobby", {
+      kind: "chat",
+      text: String(i),
+      time: i,
+      ref: String(i),
+    });
+  assert.equal(client.room!.total, limits.history + 2);
+  assert.equal(client.items.length, limits.history);
+  assert.equal(client.items[0].text, "2");
+  client.add("lobby", last(client));
+  assert.equal(
+    client.room!.total,
+    limits.history + 2,
+    "duplicates do not count twice",
+  );
+  client.add("lobby", { kind: "presence", text: "one", time: 1000 });
+  client.add("lobby", { kind: "presence", text: "two", time: 1001 });
+  assert.equal(
+    client.room!.total,
+    limits.history + 3,
+    "merged rows count once",
+  );
+  const next = makeClient({ session, local }).client;
+  next.restore();
+  assert.equal(next.room!.total, limits.history + 3);
+  next.clearLog();
+  assert.equal(next.room!.total, 0);
+  assert.equal(next.items.length, 0);
+  session.full = true;
+  next.add("lobby", { kind: "chat", text: "storage unavailable", time: 1002 });
+  assert.equal(
+    next.room!.total,
+    1,
+    "storage failure does not stop the live counter",
+  );
+});
 
 test("retry within the same relay's two-minute window", () => {
   const msg = { boot: "a", attempt: 1000 };

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -66,12 +67,22 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 		return stream, sess
 	}
 	healthy, _ := dial()
+	reader := bufio.NewReader(healthy)
 	// Send a ping to materialise the healthy bidirectional stream on the server.
+	first := true
 	ping := func() {
 		if _, err := healthy.Write([]byte("{\"op\":\"ping\",\"id\":\"alive\"}\n")); err != nil {
 			t.Fatal(err)
 		}
-		reply, err := bufio.NewReader(healthy).ReadString('\n')
+		if first {
+			info, err := reader.ReadBytes('\n')
+			var event struct{ Op, Transport, Encryption string }
+			if err != nil || json.Unmarshal(info, &event) != nil || event.Op != "connection" || event.Transport != "WebTransport" || event.Encryption != tls.VersionName(tls.VersionTLS13) {
+				t.Fatal("missing negotiated connection info", string(info), err)
+			}
+			first = false
+		}
+		reply, err := reader.ReadString('\n')
 		if err != nil || !strings.Contains(reply, "\"pong\"") {
 			t.Fatal("healthy stream failed", reply, err)
 		}
@@ -82,10 +93,15 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 		if _, err := stream.Write(append(frame, []byte("\n{\"op\":\"ping\"}\n")...)); err != nil {
 			t.Fatal(err)
 		}
-		var b [1]byte
-		n, err := stream.Read(b[:])
-		if n != 0 || err == nil || os.IsTimeout(err) {
-			t.Fatalf("bad frame not rejected: n=%d err=%v", n, err)
+		scan := bufio.NewScanner(stream)
+		for scan.Scan() {
+			var event struct{ Op string }
+			if json.Unmarshal(scan.Bytes(), &event) != nil || event.Op != "connection" {
+				t.Fatalf("bad frame produced a reply: %s", scan.Bytes())
+			}
+		}
+		if err := scan.Err(); err == nil || os.IsTimeout(err) {
+			t.Fatalf("bad frame not rejected: %v", err)
 		}
 		_ = sess.CloseWithError(0, "")
 	}

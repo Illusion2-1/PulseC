@@ -4,6 +4,11 @@
 export type Status =
   "connecting" | "connected" | "reconnecting" | "unsupported";
 
+export interface ConnectionInfo {
+  transport: string;
+  encryption: string;
+}
+
 export interface Member {
   id: number;
   nick: string;
@@ -51,6 +56,7 @@ export type ModerationAction =
   | "public";
 
 export type ServerEvent =
+  | ({ op: "connection" } & ConnectionInfo)
   | { op: "directory"; rooms: DirectoryRoom[]; online: number; uptime: number }
   | { op: "identity"; trip: string }
   | { op: "nick"; nick: string }

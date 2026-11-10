@@ -31,6 +31,9 @@ const rejected = (e: { text?: string }) => e.text || t("rejected");
 
 // One handler per relay event (docs/protocol.md). Unknown events are ignored.
 const handlers: Handlers = {
+  connection(c, e) {
+    c.connection = { transport: e.transport, encryption: e.encryption };
+  },
   directory(c, e) {
     c.directory = e.rooms;
     c.online = e.online;

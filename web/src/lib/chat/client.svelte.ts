@@ -16,6 +16,7 @@ import {
 import { connect, type Connect, type Transport } from "../platform/transport";
 import type {
   ClientCommand,
+  ConnectionInfo,
   DirectoryRoom,
   Identity,
   LogEntry,
@@ -61,6 +62,7 @@ type Details = Partial<LogEntry> & { params?: Params };
  */
 export class ChatClient {
   status = $state<Status>("connecting");
+  connection = $state.raw<ConnectionInfo | null>(null);
   /** Updated twice a second; drives clocks, idle markers and cooldowns. */
   now = $state(Date.now());
   directory = $state.raw<DirectoryRoom[]>([]);
@@ -137,6 +139,7 @@ export class ChatClient {
       status: (s) => {
         this.status = s;
         if (s !== "connected") {
+          this.connection = null;
           for (const room of this.rooms.values()) room.reset();
           this.outbox.disconnected();
           this.rtt = null;
@@ -182,7 +185,7 @@ export class ChatClient {
     } catch {
       this.cacheError = "cacheUnavailable";
     }
-    const room = new Room(name, listed, log);
+    const room = new Room(name, listed, log, this.history.count(name));
     this.rooms.set(name, room);
     return room;
   }
@@ -243,6 +246,7 @@ export class ChatClient {
     room.log = merge
       ? [...room.log.slice(0, -1), m]
       : [...room.log.slice(-(limits.history - 1)), m];
+    if (!merge) room.total++;
     try {
       this.history.append(name, m, merge);
     } catch {
@@ -457,7 +461,10 @@ export class ChatClient {
   }
 
   clearLog() {
-    if (this.room) this.room.log = [];
+    if (this.room) {
+      this.room.log = [];
+      this.room.total = 0;
+    }
     try {
       this.history.clear(this.current);
     } catch {

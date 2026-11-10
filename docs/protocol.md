@@ -2,6 +2,8 @@
 
 浏览器先读取同源 `GET /config` 得到中继实例启动标识 `boot` 和本机开发模式的证书指纹 `pin`。公网使用系统信任的 TLS 证书。连接同一主机的 `https://…/connect` 后，每个会话使用一条可靠双向流，每行一个 UTF-8 JSON 对象，发送方用 LF 结束，单个客户端命令不超过 32 KiB（含换行）。两个方向分别有序，不保证不同流同步。以下是应用协议；不支持 WebSocket。
 
+流建立后，中继首先发送 `connection` 事件，如 `{"op":"connection","transport":"WebTransport","encryption":"TLS 1.3"}`。transport 由实际接入处理器提供，encryption 取自该 CONNECT 请求的 TLS 协商结果；经过反向代理时指代理到中继这一段。客户端在断开时清除这些信息；旧中继没有此事件时不显示连接详情。
+
 | 客户端命令 | 输入 / 前置条件 | 中继结果 |
 |---|---|---|
 | directory | known 为本机知道的频道名，未设身份也可查询 | directory：rooms、online（已入房连接数）、uptime 秒。未列出频道仅在名称匹配时返回，知道名字即可加入 |

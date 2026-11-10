@@ -20,6 +20,7 @@ func TestV1DeliveryFrames(t *testing.T) {
 		wire []byte
 		want string
 	}{
+		{"connection", Connection("WebTransport", "TLS 1.3"), `{"op":"connection","transport":"WebTransport","encryption":"TLS 1.3"}`},
 		{"public", public, chatJSON},
 		{"whisper", Message(c, sender, "cd", 43, "Bo#abcd"), `{"op":"message","room":"lobby","ref":"cd","nick":"Al","trip":"0123","kind":"whisper","text":"one\ntwo","time":43,"to":"Bo#abcd"}`},
 		{"join delta", MemberChange("lobby", "join", sender), `{"op":"member","room":"lobby","action":"join","text":"+ Al#0123","user":{"id":7,"nick":"Al","trip":"0123","active":42}}`},

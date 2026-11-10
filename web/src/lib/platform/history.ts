@@ -75,6 +75,11 @@ export class History {
     this.#cursors.set(room, seq + 1);
   }
 
+  /** Total appended rows, including slots overwritten by the history ring. */
+  count(room: string) {
+    return this.#cursors.get(room) ?? 0;
+  }
+
   clear(room: string) {
     for (const k of this.#store.keys())
       if (k.startsWith(keyFor(room))) this.#store.remove(k);

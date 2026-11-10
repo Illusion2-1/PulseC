@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"log/slog"
 	"net"
@@ -146,6 +147,12 @@ func (g *ingress) connect(wt *webtransport.Server, h *chat.Hub, local bool) http
 		remote, err := netip.ParseAddrPort(r.RemoteAddr)
 		if err != nil {
 			g.failures.Add(1)
+			return
+		}
+		if stream.SetWriteDeadline(time.Now().Add(15*time.Second)) != nil {
+			return
+		}
+		if _, err := stream.Write(protocol.Connection("WebTransport", tls.VersionName(r.TLS.Version))); err != nil {
 			return
 		}
 		p := chat.NewPeer(remote.Addr())

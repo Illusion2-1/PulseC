@@ -13,6 +13,8 @@ export class Room {
   listed = $state(false);
   /** Rows in display order. Entries are compared by identity, so not proxied. */
   log = $state.raw<LogEntry[]>([]);
+  /** Total rows since /clear, including history that has rolled out. */
+  total = $state(0);
   /** The latest relay snapshot; null while not joined. */
   live = $state.raw<RoomState | null>(null);
   /** The relay has confirmed membership on this connection. */
@@ -24,10 +26,16 @@ export class Room {
   /** When the relay last acknowledged one of our sends here. */
   acknowledged = $state(0);
 
-  constructor(name: string, listed: boolean, log: LogEntry[]) {
+  constructor(
+    name: string,
+    listed: boolean,
+    log: LogEntry[],
+    total = log.length,
+  ) {
     this.name = name;
     this.listed = listed;
     this.log = log;
+    this.total = total;
   }
 
   /** The snapshot, or an empty one before the first state arrives. */
