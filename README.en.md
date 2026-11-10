@@ -22,8 +22,8 @@ Open <http://127.0.0.1:8443>.
 
 ## Public deployment
 
-- **Serve directly with PulseC.** PulseC serves Let’s Encrypt HTTP-01 challenge files on TCP 80, HTTPS on TCP 443, and WebTransport on UDP 443. Certbot can renew the certificate while chat sessions stay connected. [Direct deployment and renewal (中文)](docs/operations.md#direct)
-- **Put Caddy in front.** Caddy owns public ports 80 and 443, manages the public certificate, and proxies both the site and WebTransport sessions. PulseC is reachable only on the private network. [Caddy setup (中文)](docs/operations.md#caddy)
+- **Serve directly with PulseC.** PulseC listens on public ports 80 and 443. Compose runs Certbot for HTTP-01 issuance and renewal. Chat sessions stay connected during certificate rotation. [Direct deployment and renewal (中文)](docs/operations.md#direct)
+- **Put Caddy in front.** Add PulseC as a site on your existing Caddy server. Caddy manages the public certificate and proxies WebTransport to a loopback listener. The upstream needs no certificate files. [Caddy setup (中文)](docs/operations.md#caddy)
 
 ## Chatting
 

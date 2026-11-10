@@ -22,8 +22,8 @@ docker compose -f compose.yaml -f compose.local.yaml up -d --build
 
 ## 公网部署
 
-- **PulseC 直出** · PulseC 在 TCP 80 提供 Let’s Encrypt 文件验证，在 TCP/UDP 443 提供 HTTPS 和 WebTransport。Certbot 续期后可以在线换证。[直出与续期](docs/operations.md#direct)
-- **Caddy 反代** · Caddy 独占公网 80/443，管理公网证书，代理页面与 WebTransport 会话。PulseC 只在内部网络提供服务。[Caddy 配置与启动](docs/operations.md#caddy)
+- **PulseC 直出** · PulseC 提供公网 80/443。Compose 自带 Certbot，负责 Let’s Encrypt 文件验证、签发和续期，换证时可继续聊天。[直出与续期](docs/operations.md#direct)
+- **Caddy 反代** · 把 PulseC 作为一个站点加到已有 Caddy。Caddy 管理公网证书，同机的 PulseC 只监听回环地址，无需配置内网证书。[Caddy 配置与启动](docs/operations.md#caddy)
 
 ## 使用聊天室
 

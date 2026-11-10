@@ -5,8 +5,7 @@
 | 场景 | 命令 |
 |---|---|
 | 原生 HTTP-01、空证书目录首签 | `PULSEC_BIN="$PWD/dist/pulsec" go test -count=1 ./qa -run TestDirectHTTP01Bootstrap` |
-| Certbot 部署钩子、权限与失败重试 | `sh qa/certbot-deploy.sh` |
-| Caddy 公网终止 TLS、代理 WebTransport、上游 CA 与 Origin 校验 | 准备与 `deploy/Dockerfile.caddy` 对应的 Caddy 可执行文件、Chrome 和 qa 的 npm 依赖，运行 `CADDY_BIN=/path/to/caddy PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh`。 |
+| 现有 Caddy 的多站点转发、双浏览器收发与 Origin 校验 | 准备支持 WebTransport 反代的 Caddy、Chrome 和 qa 的 npm 依赖，运行 `CADDY_BIN=/path/to/caddy PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh`。 |
 | 独立启动与 TLS 证书轮换 | `PULSEC_BIN="$PWD/dist/pulsec" go test -count=1 ./qa -run TestProductionTLSRotation` |
 | 反复进出、临时状态过期及日志隐私 | `PULSEC_CHURN_BIN="$PWD/dist/pulsec" go test -timeout=12m -count=1 ./qa -run TestWebTransportChurn` |
 | 双语浏览器、弱网、私聊隔离、刷新与重连 | 安装 Chrome 与 Python 3，运行 `npm ci --prefix qa && node qa/browser.mjs`。设置 `ROLLBACK_BIN` 可测试旧服务接管已打开的标签页。 |
