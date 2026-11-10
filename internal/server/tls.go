@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"net/netip"
 	"os"
 	"time"
 )
@@ -18,6 +19,17 @@ import (
 // A public listener uses the supplied chain. Only the local development
 // endpoint bootstraps WebTransport using a short-lived certificate pin.
 func loadCertificate(cfg Config) (tls.Certificate, string, error) {
+	if cfg.BehindProxy {
+		addr, err := netip.ParseAddrPort(cfg.Addr)
+		if err != nil || !addr.Addr().IsLoopback() {
+			return tls.Certificate{}, "", errors.New("-behind-proxy requires a numeric loopback -addr")
+		}
+		if cfg.CertFile != "" || cfg.KeyFile != "" || cfg.HTTPAddr != "" || cfg.ACMEWebroot != "" || cfg.PublicHost != "" {
+			return tls.Certificate{}, "", errors.New("-behind-proxy cannot be combined with certificate or direct deployment flags")
+		}
+		cert, _, err := localCert()
+		return cert, "", err
+	}
 	if cfg.CertFile != "" || cfg.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		return cert, "", err

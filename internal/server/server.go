@@ -23,6 +23,7 @@ import (
 )
 
 type Config struct {
+	BehindProxy                       bool
 	Addr, CertFile, KeyFile           string
 	HTTPAddr, PublicHost, ACMEWebroot string
 	MaxSessions, SourceRate           int
@@ -142,7 +143,7 @@ func Run(ctx context.Context, cfg Config, static fs.FS, logger *log.Logger, relo
 				continue
 			}
 			// The development certificate pin belongs to this process lifetime.
-			if local {
+			if local || cfg.BehindProxy {
 				continue
 			}
 			pair, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
