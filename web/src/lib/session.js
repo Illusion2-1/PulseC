@@ -21,7 +21,8 @@ export function applyMember(users, action, user) {
   if (action === "join")
     return [...users.filter((u) => u.id !== user.id), user];
   if (action === "leave") return users.filter((u) => u.id !== user.id);
-  if (action === "nick") return users.map((u) => (u.id === user.id ? user : u));
+  if (action === "nick" || action === "color")
+    return users.map((u) => (u.id === user.id ? user : u));
   return users;
 }
 
@@ -34,6 +35,7 @@ export function deliveryUnknown(message, boot, now) {
 }
 
 export const tripPattern = /^[a-f0-9]{16}$/;
+export const colorPattern = /^#[a-f0-9]{6}$/;
 
 export const names = /^[\p{L}\p{N}_-]{1,24}$/u;
 export const nicks = /^[\p{L}\p{N}_-]{1,16}$/u;

@@ -16,9 +16,8 @@
   --red:   #ff5f4a;   /* 只用于错误、断线、冒名冲突 */
   --whis:  #c792ea;   /* 私聊专用 */
 
-  /* trip 色板：8 色，由 trip 哈希决定，同一身份在任何频道颜色一致 */
-  --t0:#6fc3df; --t1:#9ece6a; --t2:#e0af68; --t3:#bb9af7;
-  --t4:#7dcfff; --t5:#f7768e; --t6:#73daca; --t7:#d6c38a;
+  /* 身份色：默认由 昵称#trip 哈希出色相（colors.js），所有客户端一致；
+   * /color 自选的颜色也在客户端钳制到可读亮度。经 --who 传给昵称与底纹 */
 
   --lh: 20px;
   --mono: "JetBrains Mono", "IBM Plex Mono", "Sarasa Mono SC", "Noto Sans Mono CJK SC",
@@ -44,8 +43,6 @@ a { color: inherit; text-decoration: none; }
 .mid  { color: var(--fg-1); }
 .amb  { color: var(--amber); }
 .red  { color: var(--red); }
-.t0{color:var(--t0)}.t1{color:var(--t1)}.t2{color:var(--t2)}.t3{color:var(--t3)}
-.t4{color:var(--t4)}.t5{color:var(--t5)}.t6{color:var(--t6)}.t7{color:var(--t7)}
 
 /* 键位提示：只在有键盘的设备上出现 */
 kbd { font: inherit; color: var(--fg-1); }
@@ -72,6 +69,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 }
 .head  { grid-area: head;  border-bottom: 1px solid var(--rule); color: var(--fg-2); }
 .head .brand { color: var(--amber); }
+.head .ch { color: var(--fg); }                            /* 频道名亮，主题和协议信息暗 */
 
 /* 频道标签：仿 tmux 窗口列表，标记位传递未读状态 */
 .tabs  { grid-area: tabs; display: flex; overflow-x: auto; border-bottom: 1px solid var(--rule); white-space: nowrap; }
@@ -82,6 +80,8 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .tab.unr   { color: var(--fg); }                          /* 有新消息 */
 .tab.men   { color: var(--amber); }                       /* 有人提到你 */
 .tab.men.act { color: #000; }
+.tab.gone { text-decoration: line-through; color: var(--fg-2); }   /* 被移出的频道：标签保留供查看 */
+.tab.gone.act { text-decoration: none; color: #000; opacity: .6; }
 .tabs .add { margin-left: auto; padding: 0 1ch; color: var(--fg-2); line-height: var(--lh); }
 
 /* 消息日志 */
@@ -98,7 +98,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .ln .tm { color: var(--fg-2); }
 .ln .tm .s { color: var(--fg-3); }                        /* 秒位更暗：扫视时只读到分钟 */
 .ln .tr { color: var(--fg-2); cursor: pointer; }
-.ln .nk { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.ln .nk { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; color: var(--who, inherit); }
 .ln .tx { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0;
           border-left: 1px solid var(--rule); padding-left: 1ch; margin-left: -1ch; }
 .ln .id { display: none; }
@@ -113,7 +113,10 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .ln.self:not(.cont) .nk { text-decoration: underline; text-decoration-color: var(--fg-2); text-underline-offset: 3px; }
 .ln .tr:not(:disabled):hover { color: var(--whis); }      /* 点 trip 私聊 */
 .ln .nk:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
-.ln.men { border-left-color: var(--amber); background: rgba(255,176,0,.06); }
+/* 发言行铺一层很淡的身份色：同一人连续的行连成一条色带，相邻两人不易看串行 */
+.ln.who { background: color-mix(in srgb, var(--who) 10%, transparent); }
+.ln.who:hover { background: color-mix(in srgb, var(--who) 16%, transparent); }
+.ln.men, .ln.men:hover { border-left-color: var(--amber); background: rgba(255,176,0,.13); }
 .ln.men .tx { color: #e8e4d6; }
 .ln.flash { background: var(--bg-2); }
 
@@ -130,7 +133,7 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 
 /* 正文内联格式 */
 .tx code { color: var(--amber); background: var(--bg-1); padding: 0 .5ch; }
-.tx .q   { color: var(--t1); }                             /* > 引用行 */
+.tx .q   { color: #9ece6a; }                               /* > 引用行：固定绿色，与身份色板无关 */
 .tx .ref { color: var(--amber); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .tx .at  { color: var(--fg-1); }                          /* 提到别人：只做区分 */
 .tx .at.me { color: var(--amber); }                       /* 提到你：琥珀色 */
@@ -161,19 +164,38 @@ kbd::after  { content: "]"; color: var(--fg-2); }
 .users h3 { font: inherit; color: var(--fg-2); padding: 0 1ch; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; }
 .users .grp { color: var(--fg-2); padding: 6px 1ch 0; }
 /* 昵称完整显示，过长时折行；trip 只显示前 5 位，与日志列一致，完整值在 title 和 /w 中 */
-.u { display: grid; grid-template-columns: minmax(0, 1fr) 5ch; column-gap: 1ch; align-items: start; padding: 0 1ch; line-height: var(--lh); }
+/* 成员行：角色位（@ 创建者 / + 协管）· 昵称 · trip · 管理员的操作入口 */
+.u { display: grid; grid-template-columns: 1ch minmax(0, 1fr) 5ch auto; column-gap: 1ch; align-items: start; padding: 0 1ch; line-height: var(--lh); }
 .u:hover { background: var(--bg-1); }
-.u .nm { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.u .r { color: var(--amber); }
+.u .nm { min-width: 0; overflow-wrap: anywhere; white-space: normal; color: var(--who, inherit); }
+.u.muted .nm { text-decoration: line-through; text-decoration-color: var(--red); }
+.u .more { color: var(--fg-2); padding: 0 .5ch; }
+.u .more:hover, .u .more[aria-expanded="true"] { color: var(--amber); }
+.acts { display: flex; flex-wrap: wrap; gap: 0 1.5ch; padding: 0 1ch 4px 3ch; background: var(--bg-1); }
+.acts button { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
+.acts button:hover { color: var(--amber); }
+.acts .danger:hover { color: var(--red); }
+.opts { margin-top: 8px; border-top: 1px solid var(--rule); }
+.opts label { display: flex; gap: 1ch; align-items: center; padding: 2px 1ch; color: var(--fg-1); }
+.opts label > span { color: var(--fg-2); }
+.opts select { margin-left: auto; }
+.opts input:disabled, .opts select:disabled { opacity: .6; cursor: default; }
+.opts p { padding: 2px 1ch; }
+.b { display: flex; justify-content: space-between; padding: 0 1ch; color: var(--fg-2); }
+.b .un { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
+.c .lk { color: var(--fg-2); }
 .u .nm:hover { text-decoration: underline; text-underline-offset: 3px; }
 .u .tr { color: var(--fg-2); text-align: right; }
 .u .tr:not(:disabled):hover { color: var(--whis); }
 .u.idle .nm { color: var(--fg-2); }
-.u.me .tr { color: var(--fg-2); }
+.u.me .nm::after { content: " ←"; color: var(--fg-2); }
 .users .tr:disabled { opacity: 1; cursor: default; }
 
 /* 状态栏 */
-.stat { grid-area: stat; border-top: 1px solid var(--rule); background: var(--bg-1); color: var(--fg-1); }
-.stat .k { color: var(--fg-2); }
+.stat { grid-area: stat; border-top: 1px solid var(--rule); background: var(--bg-1); color: var(--fg); }
+.stat .k { color: var(--fg-2); }                          /* 键暗、值亮 */
+.stat .warnText { color: var(--red); }
 .stat .pulse { color: var(--fg-1); letter-spacing: -1px; }   /* 琥珀色留给需要你注意的东西 */
 .stat.off {
   color: #000;

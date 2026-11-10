@@ -30,6 +30,13 @@ func (h *Hub) Sweep(now time.Time) {
 			delete(h.receipts, k)
 		}
 	}
+	for _, r := range h.rooms {
+		for trip, sent := range r.recent {
+			if len(sent) == 0 || now.Sub(sent[len(sent)-1]) >= 10*time.Second {
+				delete(r.recent, trip)
+			}
+		}
+	}
 	for k, v := range h.limits {
 		if len(v.sent) == 0 || now.Sub(v.sent[len(v.sent)-1]) > time.Minute {
 			delete(h.limits, k)

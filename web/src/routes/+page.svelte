@@ -7,6 +7,7 @@
     applyMember,
     deliveryUnknown,
     tripPattern,
+    colorPattern,
     names,
     nicks,
   } from "$lib/session.js";
@@ -17,6 +18,7 @@
   import MessageList from "$lib/MessageList.svelte";
   import Composer from "$lib/Composer.svelte";
   import { spark, mentions as mentioned } from "$lib/format.js";
+  import { normalizeHex } from "$lib/colors.js";
   import { connect } from "$lib/link.js";
   import "$lib/style.css";
 
@@ -37,6 +39,8 @@
     logs = Object.create(null),
     unread = Object.create(null),
     mentions = Object.create(null);
+  // Rooms this tab was removed from (kick, ban, lock). The tab stays for reading.
+  let parted = new Set();
   let joined = new Set(),
     queue = [],
     inflight = "",
@@ -76,7 +80,13 @@
     try {
       sessionStorage.setItem(
         "pulsec.session",
-        JSON.stringify({ identity, current, rooms, queue, ignored }),
+        JSON.stringify({
+          identity,
+          current,
+          rooms,
+          queue,
+          ignored,
+        }),
       );
     } catch {
       cacheError = "cacheUnavailable";
@@ -108,9 +118,10 @@
       rosterDelta: true,
       nick: identity.nick,
       proof: identity.proof,
+      color: identity.color || "",
     });
     for (const [room, pub] of Object.entries(rooms))
-      link.send({ op: "join", room, public: pub });
+      if (!parted.has(room)) link.send({ op: "join", room, public: pub });
   }
   function heartbeat() {
     if (!current) directoryRequest();
@@ -126,6 +137,7 @@
       /^[a-f0-9]{64}$/.test(saved.identity.proof)
     ) {
       identity = saved.identity;
+      if (!colorPattern.test(identity.color)) identity.color = "";
       for (const [name, listed] of Object.entries(saved.rooms || {})
         .filter(([name]) => names.test(name))
         .slice(0, 9)) {
@@ -217,7 +229,7 @@
       m.trip !== identity.trip &&
       (m.kind === "whisper" || mentioned(m.text, identity.nick));
     if (name !== current) {
-      if (!merge) unread[name] = (unread[name] || 0) + 1;
+      if (!merge && !m.quiet) unread[name] = (unread[name] || 0) + 1;
       if (pinged) mentions[name] = true;
     } else {
       if (hidden && m.trip && m.trip !== identity.trip) {
@@ -265,6 +277,20 @@
     else error = event;
   }
 
+  // The relay sends a room snapshot on every join and after topic changes.
+  function arrived(next, prev) {
+    const room = next.room;
+    if (!joined.has(room)) {
+      restore(room);
+      const last = logs[room].at(-1);
+      const code = logs[room].length ? "rejoined" : "joinedRoom";
+      if (last?.code !== code)
+        notice(code, room, { params: { room }, quiet: true });
+    } else if (prev && prev.topic !== next.topic)
+      notice(next.topic ? "topicChanged" : "topicCleared", room, {
+        params: { topic: next.topic },
+      });
+  }
   function presence(e) {
     if (!e.text || !Object.hasOwn(rooms, e.room)) return;
     const code = { join: "memberJoin", leave: "memberLeave" }[e.action];
@@ -309,9 +335,25 @@
           save();
         }
         break;
+      case "color":
+        if (identity && (e.color === "" || colorPattern.test(e.color))) {
+          identity.color = e.color;
+          save();
+          notice(
+            e.color ? "colorSet" : "colorReset",
+            current,
+            e.color ? { params: { color: e.color } } : {},
+          );
+        }
+        break;
+      case "moderation":
+        moderated(e);
+        break;
       case "state":
         if (Object.hasOwn(rooms, e.room)) {
+          arrived(e, states[e.room]);
           states[e.room] = e;
+          mark(e.room, false);
           if (rooms[e.room] !== e.public) {
             rooms[e.room] = e.public;
             save();
@@ -325,7 +367,7 @@
         if (!state) break;
         const users = applyMember(state.users, e.action, e.user);
         states[e.room] = { ...state, users };
-        presence(e);
+        if (e.action !== "color") presence(e);
         break;
       }
       case "notice":
@@ -364,6 +406,7 @@
             ref: e.ref,
             nick: m.nick,
             trip: identity.trip,
+            color: identity.color || undefined,
           });
         queue = queue.filter((q) => q.id !== e.id);
         inflight = "";
@@ -391,19 +434,116 @@
           notice(e.code, m.room, {
             text: e.text || $t("rejected"),
             unsent: m.raw,
+            warn: true,
           });
           if (!draft && current === m.room) draft = m.raw;
           save();
         } else if (e.request === "join" && Object.hasOwn(rooms, e.room)) {
-          notice(e.code, e.room, { text: e.text || $t("rejected") });
-          notice("retryJoin", e.room, { params: { room: e.room } });
-        } else notice(e.code, current, { text: e.text || $t("rejected") });
+          notice(e.code, e.room, {
+            text: e.text || $t("rejected"),
+            warn: true,
+          });
+          if (e.code === "room_banned" || e.code === "room_locked")
+            part(e.room);
+          if (e.code !== "room_banned")
+            notice("retryJoin", e.room, { params: { room: e.room } });
+        } else
+          notice(e.code, current, {
+            text: e.text || $t("rejected"),
+            warn: true,
+          });
         break;
       }
     }
   }
+  const tag = (nick, trip) => (nick || "") + "#" + (trip || "").slice(0, 5);
+  const codes = {
+    kick: "modKick",
+    ban: "modBan",
+    unban: "modUnban",
+    mute: "modMute",
+    unmute: "modUnmute",
+    op: "modOp",
+    deop: "modDeop",
+  };
+  function moderated(e) {
+    if (!Object.hasOwn(rooms, e.room)) return;
+    const by = tag(e.by?.nick, e.by?.trip);
+    const params = { by, target: tag(e.nick, e.target), rate: e.rate };
+    const toggles = {
+      slow: e.on ? "modSlow" : "modSlowOff",
+      lock: e.on ? "modLock" : "modUnlock",
+      topiclock: e.on ? "modTopicLock" : "modTopicUnlock",
+      public: e.on ? "modPublic" : "modPrivate",
+    };
+    const code = codes[e.action] || toggles[e.action];
+    if (code) notice(code, e.room, { params });
+    if (
+      (e.action === "kick" || e.action === "ban") &&
+      e.target === identity.trip
+    ) {
+      notice(e.action === "kick" ? "youKicked" : "youBanned", e.room, {
+        params: { by, room: e.room },
+      });
+      part(e.room);
+    }
+  }
+  function mark(room, gone) {
+    if (parted.has(room) === gone) return;
+    const next = new Set(parted);
+    if (gone) next.add(room);
+    else next.delete(room);
+    parted = next;
+  }
+  // The relay no longer has us in this room. Keep the tab and its history.
+  function part(room) {
+    joined.delete(room);
+    mark(room, true);
+    const rest = Object.assign(Object.create(null), states);
+    delete rest[room];
+    states = rest;
+    const dropped = queue.filter((q) => q.room === room && q.id !== inflight);
+    if (dropped.length) {
+      queue = queue.filter((q) => !dropped.includes(q));
+      for (const q of dropped)
+        notice("not_joined", room, { unsent: q.raw, warn: true });
+      save();
+    }
+  }
+  $: admin =
+    !!identity?.trip &&
+    (state.owner === identity.trip || !!state.mods?.includes(identity.trip));
+  function moderate(action, extra = {}) {
+    if (status !== "connected") return notice("needConnection");
+    if (!admin) return notice("not_admin");
+    link.send({ op: "moderate", room: current, action, ...extra });
+  }
+  // A target is a nick, nick#trip or full trip among members (or the ban list).
+  function target(text, unban = false) {
+    const word = text.trim();
+    if (!word) return notice("needTarget");
+    const [nick, trip] = word.includes("#") ? word.split("#") : [word, ""];
+    if (tripPattern.test(word)) return word;
+    if (unban) {
+      const hit = (state.banned || []).filter(
+        (t) => t === trip || t.startsWith(word),
+      );
+      if (hit.length === 1) return hit[0];
+    }
+    const hits = [
+      ...new Set(
+        state.users
+          .filter((u) =>
+            trip ? u.nick === nick && u.trip === trip : u.nick === nick,
+          )
+          .map((u) => u.trip),
+      ),
+    ];
+    if (hits.length === 1) return hits[0];
+    return notice(hits.length ? "ambiguousTarget" : "needTarget");
+  }
   function enter(n, proof, name, publish) {
-    identity = { nick: n, proof, trip: "" };
+    identity = { nick: n, proof, trip: "", color: "" };
     link.send({ op: "identity", rosterDelta: true, nick: n, proof });
     join(name, publish);
   }
@@ -434,8 +574,10 @@
       restore(name);
       remember(name);
     }
-    if (!joined.has(name))
+    if (!joined.has(name)) {
+      mark(name, false);
       link.send({ op: "join", room: name, public: rooms[name] });
+    }
     select(name);
   }
   function leave(all = false) {
@@ -444,7 +586,8 @@
       return notice("leavePending");
     const remaining = Object.assign(Object.create(null), rooms);
     for (const name of leaving) {
-      link.send({ op: "leave", room: name });
+      if (!parted.has(name)) link.send({ op: "leave", room: name });
+      mark(name, false);
       joined.delete(name);
       delete remaining[name];
       delete states[name];
@@ -526,6 +669,52 @@
         }
         case "/forget":
           return forget();
+        case "/color": {
+          if (!arg.trim()) {
+            if (status !== "connected") return notice("needConnection");
+            return link.send({ op: "color", color: "" });
+          }
+          const hex = normalizeHex(arg);
+          if (!hex) {
+            draft = raw;
+            return notice("colorUsage");
+          }
+          if (status !== "connected") return notice("needConnection");
+          return link.send({ op: "color", color: hex });
+        }
+        case "/kick":
+        case "/ban":
+        case "/unban":
+        case "/mute":
+        case "/unmute":
+        case "/op":
+        case "/deop": {
+          const trip = target(arg, cmd === "/unban");
+          if (!trip) return;
+          if (
+            cmd === "/ban" &&
+            !window.confirm($t("banConfirm", { name: arg.trim() }))
+          )
+            return;
+          return moderate(cmd.slice(1), { target: trip });
+        }
+        case "/slow": {
+          const rate = Number(arg.trim() || "-1");
+          if (!Number.isInteger(rate) || rate < 0 || rate > 5) {
+            draft = raw;
+            return notice("slowUsage");
+          }
+          return moderate("slow", { rate, on: rate > 0 });
+        }
+        case "/lock":
+        case "/unlock":
+          return moderate("lock", { on: cmd === "/lock" });
+        case "/locktopic":
+        case "/unlocktopic":
+          return moderate("topiclock", { on: cmd === "/locktopic" });
+        case "/public":
+        case "/private":
+          return moderate("public", { on: cmd === "/public" });
         case "/users":
           return notice(undefined, current, {
             text: state.users.map((u) => u.nick + "#" + u.trip).join("  "),
@@ -561,6 +750,18 @@
           return notice("unknownCommand");
       }
     } else text = raw.replace(/^\/\//, "/");
+    if (parted.has(current)) {
+      draft = raw;
+      return notice("parted", current, { params: { room: current } });
+    }
+    if (state.muted?.includes(identity.trip) && !admin) {
+      draft = raw;
+      return notice("room_muted");
+    }
+    if (kind === "topic" && state.topicLocked && !admin) {
+      draft = raw;
+      return notice("topic_locked");
+    }
     if (queue.length >= 32 || Date.now() < until) {
       draft = raw;
       return notice("queueFull");
@@ -660,7 +861,9 @@
     <header class="bar head">
       <button class="brand" on:click={() => leave(true)} title={$t("leave")}
         >PulseC</button
-      ><span class="grow">#{current} · {state.topic || $t("noTopic")}</span
+      ><span class="grow"
+        ><span class="ch">#{current}</span> · {state.topic ||
+          $t("noTopic")}</span
       ><span class="wide">WebTransport · TLS 1.3</span><LanguagePicker /><time
         >{$clock(now)}</time
       >
@@ -671,6 +874,8 @@
           class:act={n === current}
           aria-current={n === current ? "page" : undefined}
           class:men={mentions[n]}
+          class:unr={n !== current && unread[n] > 0}
+          class:gone={parted.has(n)}
           on:click={() => select(n)}
           >{i + 1}:{n}{n === current
             ? "*"
@@ -699,6 +904,9 @@
     />
     <MemberList
       users={state.users}
+      {state}
+      {admin}
+      {moderate}
       {identity}
       {now}
       {insert}
@@ -710,7 +918,8 @@
         role="status"
         title={status === "reconnecting" ? $t("offlineHint") : undefined}
         >{$t(status)}</span
-      ><span class="wide">{$t("members", { count: state.users.length })}</span
+      ><span class="wide"
+        ><span class="k">{$t("onlineLabel")}</span> {state.users.length}</span
       ><button
         class="utog"
         aria-expanded={showUsers}
@@ -718,10 +927,25 @@
         bind:this={memberToggle}
         on:click={toggleMembers}
         >{$t("members", { count: state.users.length })}</button
-      ><span class="pulse" title={$t("pulse")}>{spark(state.pulse)}</span><span
-        class="grow"
-        >{$t(cacheError) || $t("cacheCount", { count: items.length })}</span
-      ><span class="rtt">{rtt === null ? "—" : rtt + " ms"}</span>
+      ><span title={$t("pulse")}
+        ><span class="k wide">{$t("pulseLabel")}</span>
+        <span class="pulse">{spark(state.pulse)}</span>
+        <span class="wide"
+          >{$t("perMinute", {
+            rate:
+              Math.round(
+                (state.pulse.reduce((a, b) => a + b, 0) / state.pulse.length) *
+                  10,
+              ) / 10,
+          })}</span
+        ></span
+      ><span class="grow"
+        >{#if cacheError}<span class="warnText">{$t(cacheError)}</span
+          >{:else}<span class="k">{$t("cache")}</span>
+          {items.length}/500{/if}</span
+      ><span class="rtt"
+        ><span class="k">rtt</span> {rtt === null ? "—" : rtt + " ms"}</span
+      >
       {#if status === "reconnecting"}<span class="offline-detail"
           >{$t("offlineHint")}</span
         >{/if}

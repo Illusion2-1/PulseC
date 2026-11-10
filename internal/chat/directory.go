@@ -40,7 +40,7 @@ func (h *Hub) directory(p *Peer, c protocol.Command, now time.Time) {
 			continue
 		}
 		r.advance(now.Unix())
-		rows = append(rows, protocol.DirectoryRoom{Name: n, Online: len(r.members), Pulse: r.bins, Topic: r.topic, Public: r.public})
+		rows = append(rows, protocol.DirectoryRoom{Name: n, Online: len(r.members), Pulse: r.bins, Topic: r.topic, Public: r.public, Locked: r.locked})
 	}
 	p.queue(protocol.Directory(rows, len(h.peers), int(now.Sub(h.start).Seconds())))
 }

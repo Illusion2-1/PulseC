@@ -15,6 +15,7 @@ type Peer struct {
 	source        netip.Addr
 	controlBudget ratelimit.Bucket
 	nick, trip    string
+	color         string
 	memberID      uint64
 	rosterDelta   bool
 	rooms         map[string]bool
@@ -66,11 +67,12 @@ func (p *Peer) queue(b []byte) {
 }
 
 func (p *Peer) member() protocol.Member {
-	return protocol.Member{ID: p.memberID, Nick: p.nick, Trip: p.trip, Active: p.active}
+	return protocol.Member{ID: p.memberID, Nick: p.nick, Trip: p.trip, Active: p.active, Color: p.color}
 }
 
 var nickOK = regexp.MustCompile(`^[\pL\pN_-]{1,16}$`)
 var proofOK = regexp.MustCompile("^[a-f0-9]{64}$")
+var colorOK = regexp.MustCompile("^(#[a-f0-9]{6})?$")
 
 func (h *Hub) identify(p *Peer, c protocol.Command, now time.Time) bool {
 	if p.trip != "" || !nickOK.MatchString(c.Nick) || !proofOK.MatchString(c.Proof) {
@@ -79,6 +81,9 @@ func (h *Hub) identify(p *Peer, c protocol.Command, now time.Time) bool {
 	digest := sha256.Sum256([]byte("PulseC trip v1/" + c.Proof))
 	p.trip = hex.EncodeToString(digest[:8])
 	p.nick = c.Nick
+	if colorOK.MatchString(c.Color) {
+		p.color = c.Color // an unusable colour falls back to the default
+	}
 	h.nextMemberID++
 	p.memberID = h.nextMemberID
 	p.rosterDelta = c.RosterDelta
@@ -96,5 +101,23 @@ func (h *Hub) rename(p *Peer, c protocol.Command) {
 	p.queue(protocol.Nick(p.nick))
 	for n := range p.rooms {
 		h.rooms[n].membership(n, "nick", p)
+	}
+}
+
+// recolor sets the display colour every client shows for this connection.
+// Clients derive the default from nick and trip and keep names readable.
+func (h *Hub) recolor(p *Peer, c protocol.Command) {
+	if p.trip == "" {
+		p.reject(c, protocol.IdentityRequired)
+		return
+	}
+	if !colorOK.MatchString(c.Color) {
+		p.reject(c, protocol.InvalidColor)
+		return
+	}
+	p.color = c.Color
+	p.queue(protocol.Color(p.color))
+	for n := range p.rooms {
+		h.rooms[n].membership(n, "color", p)
 	}
 }

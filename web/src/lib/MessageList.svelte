@@ -1,7 +1,8 @@
 <script>
   import { t, clock, date } from "./locale.js";
-  import { displayEvent } from "./messages.js";
-  import { color, clash, mentions, sameDay } from "./format.js";
+  import { displayEvent, isWarning } from "./messages.js";
+  import { clash, mentions, sameDay } from "./format.js";
+  import { colorOf } from "./colors.js";
   import Body from "./Body.svelte";
   export let log,
     below,
@@ -25,6 +26,12 @@
     prev.trip === m.trip &&
     prev.nick === m.nick &&
     m.time - prev.time < 120000;
+  // Colour comes from the live roster when the sender is here, otherwise from
+  // the message itself. Rows written by a person also carry a faint stripe.
+  $: roster = new Map(users.map((u) => [u.nick + "#" + u.trip, u]));
+  // The roster is passed in so the template re-runs when it changes.
+  const paint = (m, list) => colorOf(list.get(m.nick + "#" + m.trip) || m);
+  const spoken = (m) => !!m.trip && ["chat", "me", "whisper"].includes(m.kind);
 </script>
 
 <div
@@ -54,6 +61,9 @@
       class:join={m.kind === "presence"}
       class:act={m.kind === "me"}
       class:whis={m.kind === "whisper"}
+      class:warn={m.kind === "sys" && isWarning(m)}
+      class:who={spoken(m)}
+      style:--who={m.trip ? paint(m, roster) : undefined}
       class:cont={grouped(m, prev)}
       class:men={!!m.trip &&
         !own(m) &&
@@ -80,11 +90,16 @@
       >
       <button
         disabled={!m.nick}
-        class={"nk " + (m.trip ? color(m.trip) : "")}
+        class="nk"
         class:clash={clash(m.nick, m.trip, users)}
         title={m.nick ? $t("mention", { name: m.nick + "#" + m.trip }) : ""}
         on:click={() => m.nick && insert("@" + m.nick + " ")}
-        >{m.nick || (m.kind === "presence" ? "±" : "--")}</button
+        >{m.nick ||
+          (m.kind === "presence"
+            ? "±"
+            : m.kind === "sys" && isWarning(m)
+              ? "!!"
+              : "--")}</button
       >
       <span class="tx"
         >{m.kind === "whisper"

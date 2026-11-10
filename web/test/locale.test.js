@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   chooseLocale,
   displayEvent,
+  isWarning,
   messages,
   translator,
 } from "../src/lib/messages.js";
@@ -57,4 +58,13 @@ test("stored notices reflect the current locale, preserve user input and legacy 
     }),
     "+ old   Nick#abc left",
   );
+});
+
+test("failure notices are recognised for the red !! marker", () => {
+  assert.equal(isWarning({ code: "recipient_offline" }), true);
+  assert.equal(isWarning({ code: "unknownCommand" }), true);
+  assert.equal(isWarning({ warn: true }), true);
+  assert.equal(isWarning({ code: "help" }), false);
+  assert.equal(isWarning({ code: "joinedRoom" }), false);
+  assert.equal(isWarning({ text: "legacy" }), false);
 });

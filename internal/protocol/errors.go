@@ -21,6 +21,16 @@ var (
 	RecipientOffline   = Problem{"recipient_offline", "收件人不在线"}
 	UnknownKind        = Problem{"unknown_kind", "未知消息类型"}
 	UnknownOp          = Problem{"unknown_op", "未知操作"}
+	NotAdmin           = Problem{"not_admin", "只有频道管理员可以这样做"}
+	InvalidTarget      = Problem{"invalid_target", "目标无效或无权处理"}
+	InvalidRate        = Problem{"invalid_rate", "频道限速需为 0–5 条 / 10 秒"}
+	UnknownAction      = Problem{"unknown_action", "未知管理操作"}
+	ListFull           = Problem{"list_full", "名单已满"}
+	RoomBanned         = Problem{"room_banned", "你已被禁止进入此频道"}
+	RoomLocked         = Problem{"room_locked", "频道已锁定，暂不接受新成员"}
+	RoomMuted          = Problem{"room_muted", "你在此频道被禁言"}
+	TopicLocked        = Problem{"topic_locked", "主题已锁定，只有管理员可以修改"}
+	InvalidColor       = Problem{"invalid_color", "颜色需为 #rrggbb"}
 )
 
 func Reject(c Command, problem Problem) []byte {

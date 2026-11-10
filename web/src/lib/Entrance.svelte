@@ -2,6 +2,7 @@
   import { t, clock } from "./locale.js";
   import { displayEvent } from "./messages.js";
   import { spark } from "./format.js";
+  import { defaultColor } from "./colors.js";
   import { nicks, names } from "./session.js";
   import LanguagePicker from "./LanguagePicker.svelte";
   export let channel = "",
@@ -105,9 +106,12 @@
     aria-current={name === target ? "true" : undefined}
     title={r?.topic ? "#" + name + " · " + r.topic : "#" + name}
     on:click={() => choose(name)}
-    ><span class="cn">#{name}</span><span class="pulse"
-      >{r ? spark(r.pulse.slice(-10)) : ""}</span
-    ><span class="co">{foundDirectory ? r?.online || 0 : "—"}</span
+    ><span class="cn"
+      >#{name}{#if r?.locked}<span class="lk">
+          · {$t("lockedRoom")}</span
+        >{/if}</span
+    ><span class="pulse">{r ? spark(r.pulse.slice(-10)) : ""}</span><span
+      class="co">{foundDirectory ? r?.online || 0 : "—"}</span
     >{#if r?.topic}<span class="ct">{r.topic}</span>{/if}</button
   >
 {/snippet}
@@ -115,7 +119,7 @@
 <main class="app lobby">
   <header class="bar head">
     <span class="brand">PulseC</span><span class="grow"
-      >#{target} · {room
+      ><span class="ch">#{target}</span> · {room
         ? room.topic || $t("noTopic")
         : foundDirectory
           ? $t("newRoom")
@@ -174,7 +178,11 @@
         class="go"
         bind:this={goButton}
         disabled={entering || status !== "connected"}
-        ><span class="dim"
+        ><span
+          class="dim"
+          style:color={preview
+            ? defaultColor(nick.trim() || "anon", preview)
+            : undefined}
           >{nick.trim() || "anon"}#{preview.slice(0, 5) || "—"}</span
         > <span class="amb">›</span> /join #{target}</button
       >
@@ -198,11 +206,12 @@
       )}{:else}<p class="empty">{$t("noKnown")}</p>{/each}
   </aside>
   <div class="bar stat" class:off={status !== "connected"}>
-    <span role="status">{$t(status)}</span><span class="grow"
-      >{$t("stats", {
-        minutes: Math.floor(uptime / 60),
-        online: foundDirectory ? total : "—",
-      })}</span
+    <span role="status">{$t(status)}</span><span
+      ><span class="k">{$t("onlineLabel")}</span>
+      {foundDirectory ? total : "—"}</span
+    ><span class="grow"
+      ><span class="k">{$t("uptimeLabel")}</span>
+      {$t("minutes", { count: Math.floor(uptime / 60) })}</span
     >
   </div>
   <div class="bar keys">

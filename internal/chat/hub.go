@@ -78,7 +78,7 @@ func (h *Hub) Handle(p *Peer, c protocol.Command) bool {
 		return false
 	}
 	switch c.Op {
-	case "directory", "join", "leave", "nick", "ping":
+	case "directory", "join", "leave", "nick", "ping", "color", "moderate":
 		if !p.controlBudget.Take(now, 500*time.Millisecond, 24) {
 			h.limited++
 			p.reject(c, protocol.ControlLimited)
@@ -100,6 +100,10 @@ func (h *Hub) Handle(p *Peer, c protocol.Command) bool {
 		h.ping(p, c.ID, now)
 	case "send":
 		h.send(p, c, now)
+	case "color":
+		h.recolor(p, c)
+	case "moderate":
+		h.moderate(p, c)
 	default:
 		p.reject(c, protocol.UnknownOp)
 	}

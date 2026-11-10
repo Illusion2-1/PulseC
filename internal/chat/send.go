@@ -31,6 +31,11 @@ func (h *Hub) send(p *Peer, c protocol.Command, now time.Time) {
 		p.reject(c, protocol.InvalidText)
 		return
 	}
+	room := h.rooms[c.Room]
+	if room.muted[p.trip] && !room.admin(p.trip) {
+		p.reject(c, protocol.RoomMuted)
+		return
+	}
 	l := h.limits[p.trip]
 	if l == nil {
 		l = &limit{}
@@ -44,13 +49,16 @@ func (h *Hub) send(p *Peer, c protocol.Command, now time.Time) {
 		p.reject(c, protocol.ServerBusy)
 		return
 	}
+	if wait := room.slowWait(p.trip, now); wait > 0 {
+		h.limitSend(p, c, wait)
+		return
+	}
 	if !h.allowSource(p, c, now) {
 		return
 	}
 
 	sum := sha256.Sum256([]byte(key))
 	ref := hex.EncodeToString(sum[:6])
-	room := h.rooms[c.Room]
 	switch c.Kind {
 	case "chat", "me":
 		room.broadcast(protocol.Message(c, p.member(), ref, now.UnixMilli(), ""))
@@ -71,6 +79,9 @@ func (h *Hub) send(p *Peer, c protocol.Command, now time.Time) {
 	h.receipts[key] = receipt{now, ref}
 	h.limits[p.trip] = l
 	l.sent = append(l.sent, now)
+	if room.slow > 0 && !room.admin(p.trip) {
+		room.recent[p.trip] = append(room.recent[p.trip], now)
+	}
 	p.active = now.Unix()
 	p.queue(protocol.Ack(c.ID, ref))
 }
@@ -78,6 +89,10 @@ func (h *Hub) send(p *Peer, c protocol.Command, now time.Time) {
 func (h *Hub) setTopic(p *Peer, r *channel, c protocol.Command, now time.Time) bool {
 	if utf8.RuneCountInString(c.Text) > 120 {
 		p.reject(c, protocol.TopicTooLong)
+		return false
+	}
+	if r.topicLocked && !r.admin(p.trip) {
+		p.reject(c, protocol.TopicLocked)
 		return false
 	}
 	if now.Sub(r.topicChanged) < 10*time.Second {
@@ -89,6 +104,22 @@ func (h *Hub) setTopic(p *Peer, r *channel, c protocol.Command, now time.Time) b
 	r.topic = c.Text
 	r.broadcast(r.state(c.Room))
 	return true
+}
+
+// slowWait applies the room's own limit, which is never looser than the global one.
+func (r *channel) slowWait(trip string, now time.Time) time.Duration {
+	if r.slow == 0 || r.admin(trip) {
+		return 0
+	}
+	sent := r.recent[trip]
+	for len(sent) > 0 && now.Sub(sent[0]) >= 10*time.Second {
+		sent = sent[1:]
+	}
+	r.recent[trip] = sent
+	if len(sent) < r.slow {
+		return 0
+	}
+	return sent[len(sent)-r.slow].Add(10 * time.Second).Sub(now)
 }
 
 func (r *channel) whisper(p *Peer, c protocol.Command, ref string, now time.Time) bool {

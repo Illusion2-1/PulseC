@@ -22,6 +22,13 @@ type Command struct {
 	Public      bool     `json:"public"`
 	RosterDelta bool     `json:"rosterDelta"`
 	Known       []string `json:"known"`
+	// identity / color: "#rrggbb" or empty for the default derived colour.
+	Color string `json:"color"`
+	// moderate: action, target trip, switch and per-trip rate in 10 s.
+	Action string `json:"action"`
+	Target string `json:"target"`
+	On     bool   `json:"on"`
+	Rate   int    `json:"rate"`
 }
 
 const MaxFrameSize = 32 << 10

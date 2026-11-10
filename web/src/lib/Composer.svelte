@@ -1,7 +1,8 @@
 <script>
   import { t } from "./locale.js";
   import { tick } from "svelte";
-  import { color, completions } from "./format.js";
+  import { completions } from "./format.js";
+  import { colorOf } from "./colors.js";
   export let confirmed;
   export let draft = "",
     users,
@@ -48,6 +49,21 @@
     "/ignore",
     "/unignore",
     "/forget",
+    "/color",
+    "/kick",
+    "/ban",
+    "/unban",
+    "/mute",
+    "/unmute",
+    "/op",
+    "/deop",
+    "/slow",
+    "/lock",
+    "/unlock",
+    "/locktopic",
+    "/unlocktopic",
+    "/public",
+    "/private",
   ];
   $: suggestions = dismissed
     ? []
@@ -107,8 +123,7 @@
 
 <div class="input" class:throt={now < until}>
   <span class="ps"
-    ><span class={identity.trip ? color(identity.trip) : ""}
-      >{identity.nick}</span
+    ><span style:color={colorOf(identity) || undefined}>{identity.nick}</span
     ><small class="dim">#{identity.trip?.slice(0, 5)}</small>
     <span class="amb">›</span></span
   >

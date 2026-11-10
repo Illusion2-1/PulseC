@@ -2,6 +2,7 @@ package chat
 
 import (
 	"regexp"
+	"sort"
 	"time"
 
 	"pulsec/internal/protocol"
@@ -14,6 +15,30 @@ type channel struct {
 	topic        string
 	bins         [30]int
 	minute       int64
+
+	// Policy lives only as long as the room. The owner is the creator's trip;
+	// #lobby has none. Mods, bans and mutes are keyed by trip.
+	owner       string
+	mods        map[string]bool
+	banned      map[string]bool
+	muted       map[string]bool
+	locked      bool
+	topicLocked bool
+	slow        int
+	recent      map[string][]time.Time
+}
+
+func (r *channel) admin(trip string) bool {
+	return trip != "" && (trip == r.owner || r.mods[trip])
+}
+
+func keys(m map[string]bool) []string {
+	list := make([]string, 0, len(m))
+	for k := range m {
+		list = append(list, k)
+	}
+	sort.Strings(list)
+	return list
 }
 
 func (r *channel) broadcast(b []byte) {
@@ -63,7 +88,10 @@ func (r *channel) state(name string) []byte {
 	for p := range r.members {
 		users = append(users, p.member())
 	}
-	return protocol.State(name, r.topic, r.public, users, r.bins)
+	return protocol.State(name, r.topic, r.public, users, r.bins, protocol.Moderation{
+		Owner: r.owner, Mods: keys(r.mods), Banned: keys(r.banned), Muted: keys(r.muted),
+		Locked: r.locked, TopicLocked: r.topicLocked, Slow: r.slow,
+	})
 }
 
 const maxRooms = 1024
@@ -89,8 +117,22 @@ func (h *Hub) join(p *Peer, c protocol.Command) {
 			p.reject(c, protocol.RoomCapacity)
 			return
 		}
-		r = &channel{members: map[*Peer]bool{}, public: c.Public || c.Room == "lobby"}
+		r = &channel{members: map[*Peer]bool{}, public: c.Public || c.Room == "lobby",
+			mods: map[string]bool{}, banned: map[string]bool{}, muted: map[string]bool{},
+			recent: map[string][]time.Time{}}
+		if c.Room != "lobby" {
+			r.owner = p.trip
+		}
 		h.rooms[c.Room] = r
+	} else if !p.rooms[c.Room] && !r.admin(p.trip) {
+		if r.banned[p.trip] {
+			p.reject(c, protocol.RoomBanned)
+			return
+		}
+		if r.locked {
+			p.reject(c, protocol.RoomLocked)
+			return
+		}
 	}
 	if !p.rooms[c.Room] {
 		r.members[p] = true
