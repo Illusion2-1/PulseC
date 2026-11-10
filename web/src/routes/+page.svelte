@@ -16,7 +16,7 @@
   import MemberList from "$lib/MemberList.svelte";
   import MessageList from "$lib/MessageList.svelte";
   import Composer from "$lib/Composer.svelte";
-  import { spark } from "$lib/format.js";
+  import { spark, mentions as mentioned } from "$lib/format.js";
   import { connect } from "$lib/link.js";
   import "$lib/style.css";
 
@@ -118,6 +118,7 @@
   }
   onMount(() => {
     loadLanguage();
+    hidden = document.hidden;
     const saved = readSaved("sessionStorage", "pulsec.session", {});
     if (
       saved.identity &&
@@ -211,16 +212,47 @@
     } catch {
       cacheError = "cacheUnavailable";
     }
+    const pinged =
+      !!m.trip &&
+      m.trip !== identity.trip &&
+      (m.kind === "whisper" || mentioned(m.text, identity.nick));
     if (name !== current) {
       if (!merge) unread[name] = (unread[name] || 0) + 1;
-      if (
-        m.trip !== identity.trip &&
-        (m.text.includes("@" + identity.nick) || m.kind === "whisper")
-      )
-        mentions[name] = true;
-    } else if (stick) bottom();
-    else below++;
+      if (pinged) mentions[name] = true;
+    } else {
+      if (hidden && m.trip && m.trip !== identity.trip) {
+        away = [...away, m].slice(-500);
+        if (pinged) awayMention = true;
+      }
+      if (stick) bottom();
+      else below++;
+    }
   }
+  // Messages that arrived in the open channel while the browser tab was hidden.
+  let hidden = false,
+    away = [],
+    awayMention = false;
+  function visibility() {
+    hidden = document.hidden;
+    if (hidden || !away.length) return;
+    const list = logs[current] || [];
+    const first = away.find((m) => list.includes(m));
+    if (first) {
+      firstUnread = first;
+      unreadCount = list.length - list.indexOf(first);
+    }
+    away = [];
+    awayMention = false;
+  }
+  $: pending =
+    Object.entries(unread).reduce(
+      (sum, [name, n]) => sum + (name === current ? 0 : n || 0),
+      0,
+    ) + away.length;
+  $: pingedAny =
+    awayMention ||
+    Object.entries(mentions).some(([name, on]) => on && name !== current);
+  $: badge = pending ? "(" + (pingedAny ? "!" : "") + pending + ") " : "";
   function notice(code, room = current, details = {}) {
     const event = {
       kind: "sys",
@@ -385,6 +417,8 @@
     firstUnread = unreadCount ? logs[name].at(-unreadCount) : null;
     unread[name] = 0;
     mentions[name] = false;
+    away = [];
+    awayMention = false;
     showUsers = false;
     draft = "";
     below = 0;
@@ -558,6 +592,9 @@
   function insert(text) {
     composer?.insert(text);
   }
+  function whisper(target) {
+    composer?.whisper(target);
+  }
   function jump(ref) {
     const el = document.getElementById("m-" + ref);
     if (!el) return notice("missingRef");
@@ -596,10 +633,13 @@
 
 <svelte:head
   ><title
-    >{current ? "#" + current + " · PulseC" : "PulseC · " + $t("join")}</title
+    >{current
+      ? badge + "#" + current + " · PulseC"
+      : "PulseC · " + $t("join")}</title
   ></svelte:head
 >
 <svelte:window on:keydown={hotkey} />
+<svelte:document on:visibilitychange={visibility} />
 {#if !current}
   <Entrance
     bind:channel
@@ -654,6 +694,7 @@
       users={state.users}
       {jump}
       {insert}
+      {whisper}
       {bottom}
     />
     <MemberList
@@ -661,6 +702,7 @@
       {identity}
       {now}
       {insert}
+      {whisper}
       close={closeMembers}
     />
     <div class="bar stat" class:off={status !== "connected"}>

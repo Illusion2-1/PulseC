@@ -18,7 +18,9 @@
   export let error = null;
   let nick = "",
     password = "",
-    publish = false;
+    publish = false,
+    nickField,
+    goButton;
   const hex = (b) =>
     Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join(
       "",
@@ -62,6 +64,13 @@
     if (seq === previewSeq) preview = val;
   }
   $: previewTrip(password);
+  $: target = channel.trim() || "lobby";
+  $: room = directory.find((r) => r.name === target);
+  $: listed = directory.filter((r) => r.public);
+  function choose(name) {
+    channel = name;
+    (nick ? goButton : nickField)?.focus();
+  }
   async function enter() {
     error = null;
     const n = nick.trim() || "anon",
@@ -89,121 +98,116 @@
   }
 </script>
 
-<header class="bar head">
-  <span class="amb">PulseC</span><span class="grow">WebTransport / HTTP·3</span
-  ><LanguagePicker /><span role="status">{$t(status)}</span><time
-    >{$clock(now)}</time
+{#snippet row(name, r)}
+  <button
+    class="c"
+    class:sel={name === target}
+    aria-current={name === target ? "true" : undefined}
+    title={r?.topic ? "#" + name + " · " + r.topic : "#" + name}
+    on:click={() => choose(name)}
+    ><span class="cn">#{name}</span><span class="pulse"
+      >{r ? spark(r.pulse.slice(-10)) : ""}</span
+    ><span class="co">{foundDirectory ? r?.online || 0 : "—"}</span
+    >{#if r?.topic}<span class="ct">{r.topic}</span>{/if}</button
   >
-</header>
-<main class="gate">
-  <h1 class="intro"><span class="mark">PulseC</span> {$t("intro")}</h1>
-  <p>
-    {$t("privacy")}
-  </p>
-  <p class="dim">
-    {$t("stats", {
-      minutes: Math.floor(uptime / 60),
-      online: foundDirectory ? total : "—",
-    })}
-  </p>
-  {#if status === "unsupported"}<p role="status" class="net-hint">
-      {$t(status)}
-    </p>{/if}
-  {#if status === "reconnecting"}<p role="status" class="net-hint">
-      {$t("offlineHint")}
-    </p>{/if}
-  <h2>{$t("join")}</h2>
-  <form on:submit|preventDefault={enter} autocomplete="off">
-    <div class="field">
-      <label for="nick">{$t("nick")}</label><input
-        id="nick"
-        bind:value={nick}
-        maxlength="16"
-        placeholder="anon"
-      />
-    </div>
-    <div class="field">
-      <label for="pass">{$t("password")}</label><input
-        id="pass"
-        type="password"
-        bind:value={password}
-        maxlength="256"
-        placeholder={$t("passwordHint")}
-      /><span class="hint">trip {preview || "— · " + $t("temporary")}</span>
-    </div>
-    <div class="field">
-      <label for="ch">{$t("channel")}</label><input
-        id="ch"
-        bind:value={channel}
-        maxlength="24"
-        placeholder="lobby"
-      />
-    </div>
-    <label class="settings"
-      ><input type="checkbox" bind:checked={publish} />{$t("publish")}</label
+{/snippet}
+
+<main class="app lobby">
+  <header class="bar head">
+    <span class="brand">PulseC</span><span class="grow"
+      >#{target} · {room
+        ? room.topic || $t("noTopic")
+        : foundDirectory
+          ? $t("newRoom")
+          : $t("noTopic")}</span
+    ><span class="wide">WebTransport · TLS 1.3</span><LanguagePicker /><time
+      >{$clock(now)}</time
     >
-    <div class="err" role="status">
-      {error ? displayEvent($t, error) : $t(cacheError)}
-    </div>
-    <button class="go" disabled={entering || status !== "connected"}
-      >» {$t("join")} #{channel.trim() || "lobby"} <kbd>⏎</kbd></button
-    >
-  </form>
-  <h2>{$t("publicRooms")}</h2>
-  <table class="chan">
-    <colgroup
-      ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
-      /></colgroup
-    ><thead
-      ><tr
-        ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
-          >{$t("pulse")}</th
-        ><th>{$t("topic")}</th></tr
-      ></thead
-    ><tbody>
-      {#each directory.filter((r) => r.public) as r}<tr
-          class:sel={r.name === channel}
-          ><td><button on:click={() => (channel = r.name)}>{r.name}</button></td
-          ><td>{r.online}</td><td class="pulse hide-s">{spark(r.pulse)}</td><td
-            class="topic">{r.topic || "—"}</td
-          ></tr
-        >{:else}<tr
-          ><td colspan="4" class="mid"
-            >{foundDirectory ? $t("noPublic") : $t(status)}</td
-          ></tr
-        >{/each}</tbody
-    >
-  </table>
-  <h2>{$t("knownRooms")}</h2>
-  {#if known.length}<table class="chan">
-      <colgroup
-        ><col class="c-n" /><col class="c-u" /><col class="c-p hide-s" /><col
-        /></colgroup
-      ><thead
-        ><tr
-          ><th>{$t("channel")}</th><th>{$t("online")}</th><th class="hide-s"
-            >{$t("pulse")}</th
-          ><th>{$t("topic")}</th></tr
-        ></thead
-      ><tbody>
-        {#each known as n}{@const r = directory.find((r) => r.name === n)}<tr
-            class:sel={n === channel}
-            ><td><button on:click={() => (channel = n)}>{n}</button></td><td
-              >{foundDirectory ? r?.online || 0 : "—"}</td
-            ><td class="pulse hide-s">{r ? spark(r.pulse) : "—"}</td><td
-              class="topic">{r?.topic || "—"}</td
-            ></tr
-          >{/each}</tbody
+  </header>
+  <nav class="tabs" aria-label={$t("channel")}>
+    <span class="tab act">0:{$t("join")}*</span>
+  </nav>
+  <div class="log gate">
+    <h1 class="intro"><span class="mark">PulseC</span> {$t("intro")}</h1>
+    <p>{$t("privacy")}</p>
+    {#if status === "unsupported"}<p role="status" class="net-hint">
+        {$t(status)}
+      </p>{/if}
+    {#if status === "reconnecting"}<p role="status" class="net-hint">
+        {$t("offlineHint")}
+      </p>{/if}
+    <h2>{$t("join")}</h2>
+    <form on:submit|preventDefault={enter} autocomplete="off">
+      <div class="field">
+        <label for="nick">{$t("nick")}</label><input
+          id="nick"
+          bind:this={nickField}
+          bind:value={nick}
+          maxlength="16"
+          placeholder="anon"
+        />
+      </div>
+      <div class="field">
+        <label for="pass">{$t("password")}</label><input
+          id="pass"
+          type="password"
+          bind:value={password}
+          maxlength="256"
+          placeholder={$t("passwordHint")}
+        /><span class="hint">trip {preview || "— · " + $t("temporary")}</span>
+      </div>
+      <div class="field">
+        <label for="ch">{$t("channel")}</label><input
+          id="ch"
+          bind:value={channel}
+          maxlength="24"
+          placeholder="lobby"
+        />
+      </div>
+      <label class="settings"
+        ><input type="checkbox" bind:checked={publish} />{$t("publish")}</label
       >
-    </table>{:else}<p>{$t("noKnown")}</p>{/if}
-  <button class="forget" data-action="forget" on:click={forget}
-    >{$t("forget")}</button
-  >
-  <h2>{$t("about")}</h2>
-  <p>
-    {$t("identityInfo")}
-  </p>
-  <p>
-    {$t("limitInfo")}
-  </p>
+      <div class="err" role="status">
+        {error ? displayEvent($t, error) : $t(cacheError)}
+      </div>
+      <button
+        class="go"
+        bind:this={goButton}
+        disabled={entering || status !== "connected"}
+        ><span class="dim"
+          >{nick.trim() || "anon"}#{preview.slice(0, 5) || "—"}</span
+        > <span class="amb">›</span> /join #{target}</button
+      >
+    </form>
+    <h2>{$t("about")}</h2>
+    <p>{$t("identityInfo")}</p>
+    <p>{$t("limitInfo")}</p>
+    <button class="forget" data-action="forget" on:click={forget}
+      >{$t("forget")}</button
+    >
+  </div>
+  <aside class="users" aria-label={$t("channel")}>
+    <h3>{$t("publicRooms")} <span>{listed.length}</span></h3>
+    {#each listed as r (r.name)}{@render row(r.name, r)}{:else}<p class="empty">
+        {foundDirectory ? $t("noPublic") : $t(status)}
+      </p>{/each}
+    <h3>{$t("knownRooms")} <span>{known.length}</span></h3>
+    {#each known as n (n)}{@render row(
+        n,
+        directory.find((r) => r.name === n),
+      )}{:else}<p class="empty">{$t("noKnown")}</p>{/each}
+  </aside>
+  <div class="bar stat" class:off={status !== "connected"}>
+    <span role="status">{$t(status)}</span><span class="grow"
+      >{$t("stats", {
+        minutes: Math.floor(uptime / 60),
+        online: foundDirectory ? total : "—",
+      })}</span
+    >
+  </div>
+  <div class="bar keys">
+    <span class="kb"
+      ><kbd>⏎</kbd>{$t("join")} <kbd>Tab</kbd>{$t("nextField")}</span
+    >
+  </div>
 </main>

@@ -12,6 +12,15 @@ export const clock = derived(language, (value) => {
   });
   return (time) => formatter.format(time);
 });
+export const date = derived(language, (value) => {
+  const formatter = new Intl.DateTimeFormat(value, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+  return (time) => formatter.format(time);
+});
 
 export function loadLanguage() {
   let preference;

@@ -125,9 +125,14 @@ export const messages = {
   muted: ["已忽略该 trip 的消息", "Messages from that trip are muted"],
   unmuted: ["已取消忽略", "Trip unmuted"],
   help: [
-    "/join 频道 · /leave · /nick 新名 · /topic 主题\n/me 动作 · /w 昵称#trip 消息 · /users · /clear · /cancel\n/ignore 完整trip · /unignore 完整trip · /forget 清除本地数据\n用 // 发送开头的斜杠。点击时间引用，点击昵称提及。",
-    "/join channel · /leave · /nick name · /topic topic\n/me action · /w nick#trip message · /users · /clear · /cancel\n/ignore trip · /unignore trip · /forget clears local data\nUse // for a leading slash. Select a timestamp to quote or a name to mention.",
+    "/join 频道 · /leave · /nick 新名 · /topic 主题\n/me 动作 · /w 昵称#trip 消息 · /users · /clear · /cancel\n/ignore 完整trip · /unignore 完整trip · /forget 清除本地数据\n用 // 发送开头的斜杠。点击时间引用，点击昵称提及，点击 trip 私聊。",
+    "/join channel · /leave · /nick name · /topic topic\n/me action · /w nick#trip message · /users · /clear · /cancel\n/ignore trip · /unignore trip · /forget clears local data\nUse // for a leading slash. Select a timestamp to quote, a name to mention or a trip to whisper.",
   ],
+  whisperTo: ["私聊 {name}", "Whisper to {name}"],
+  mention: ["提及 {name}", "Mention {name}"],
+  you: ["你", "you"],
+  nextField: ["下一项", "Next field"],
+  newRoom: ["新频道", "new channel"],
   whisperUsage: ["用法：/w 昵称#trip 消息", "Usage: /w nick#trip message"],
   needText: ["请输入内容", "Enter some text"],
   unknownCommand: [

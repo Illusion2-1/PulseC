@@ -2,6 +2,7 @@
   import { t } from "./locale.js";
   export let text;
   export let jump;
+  export let me = "";
   let copied = -1,
     failed = -1;
   async function copy(code, i) {
@@ -45,7 +46,8 @@
             >{:else if t.startsWith(">>")}<button
               class="ref"
               on:click={() => jump(t.slice(2))}>{t}</button
-            >{:else if t.startsWith("@")}<span class="at">{t}</span>{:else}<code
-              >{t.slice(1, -1)}</code
-            >{/if}{/each}</span
+            >{:else if t.startsWith("@")}<span
+              class="at"
+              class:me={!!me && t.slice(1) === me}>{t}</span
+            >{:else}<code>{t.slice(1, -1)}</code>{/if}{/each}</span
       >{/each}{/if}{/each}

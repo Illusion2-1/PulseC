@@ -1,6 +1,7 @@
 <script>
   import { t } from "./locale.js";
   import { tick } from "svelte";
+  import { color, completions } from "./format.js";
   export let confirmed;
   export let draft = "",
     users,
@@ -22,6 +23,17 @@
     dismissed = false;
     tick().then(focus);
   }
+  // Replaces any existing whisper target so the typed message survives.
+  export function whisper(target) {
+    draft =
+      "/w " + target + " " + draft.replace(/^\/w\s+\S+\s?/, "").trimStart();
+    dismissed = true;
+    tick().then(() => {
+      focus();
+      area?.setSelectionRange(draft.length, draft.length);
+    });
+  }
+  $: self = identity.nick + "#" + identity.trip;
   const commands = [
     "/join",
     "/leave",
@@ -42,9 +54,7 @@
     : draft.match(/^\/\S*$/)
       ? commands.filter((x) => x.startsWith(draft))
       : draft.match(/@[\p{L}\p{N}_-]*$/u)
-        ? users
-            .filter((u) => u.nick.startsWith(draft.split("@").pop()))
-            .map((u) => "@" + u.nick + "#" + u.trip)
+        ? completions(users, draft.split("@").pop(), self).map((s) => "@" + s)
         : [];
   function pick(s) {
     draft = s.startsWith("@")
@@ -75,10 +85,11 @@
     }
     if (e.key === "Tab") {
       const word = draft.match(/[\p{L}\p{N}_-]+$/u);
-      const u = word && users.find((u) => u.nick.startsWith(word[0]));
-      if (u) {
+      const [match] = word ? completions(users, word[0], self) : [];
+      if (match) {
         e.preventDefault();
-        draft = draft.slice(0, -word[0].length) + "@" + u.nick + " ";
+        draft =
+          draft.slice(0, -word[0].length) + "@" + match.split("#")[0] + " ";
         return;
       }
     }
@@ -96,7 +107,9 @@
 
 <div class="input" class:throt={now < until}>
   <span class="ps"
-    >{identity.nick}<small class="dim">#{identity.trip?.slice(0, 5)}</small>
+    ><span class={identity.trip ? color(identity.trip) : ""}
+      >{identity.nick}</span
+    ><small class="dim">#{identity.trip?.slice(0, 5)}</small>
     <span class="amb">›</span></span
   >
   <textarea

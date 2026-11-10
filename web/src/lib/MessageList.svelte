@@ -1,7 +1,7 @@
 <script>
-  import { t, clock } from "./locale.js";
+  import { t, clock, date } from "./locale.js";
   import { displayEvent } from "./messages.js";
-  import { color, clash } from "./format.js";
+  import { color, clash, mentions, sameDay } from "./format.js";
   import Body from "./Body.svelte";
   export let log,
     below,
@@ -15,7 +15,16 @@
     users,
     jump,
     insert,
+    whisper,
     bottom;
+  const own = (m) => !!m.trip && m.trip === identity.trip;
+  const grouped = (m, prev) =>
+    !!prev &&
+    m.kind === "chat" &&
+    prev.kind === "chat" &&
+    prev.trip === m.trip &&
+    prev.nick === m.nick &&
+    m.time - prev.time < 120000;
 </script>
 
 <div
@@ -29,11 +38,14 @@
 >
   {#each items as m, i}
     {@const prev = items[i - 1]}
+    {@const time = $clock(m.time)}
+    {#if !prev || !sameDay(prev.time, m.time)}<div class="div day">
+        {$date(m.time)}
+      </div>{:else if m.time - prev.time > 300000}<div class="div tick">
+        {time}
+      </div>{/if}
     {#if m === firstUnread}<div class="div">
         {$t("unread", { count: unreadCount })}
-      </div>{/if}
-    {#if !prev || m.time - prev.time > 300000}<div class="div tick">
-        {$clock(m.time)}
       </div>{/if}
     <div
       id={m.ref ? "m-" + m.ref : undefined}
@@ -42,37 +54,35 @@
       class:join={m.kind === "presence"}
       class:act={m.kind === "me"}
       class:whis={m.kind === "whisper"}
-      class:cont={prev &&
-        m.kind === "chat" &&
-        prev.kind === "chat" &&
-        prev.trip === m.trip &&
-        prev.nick === m.nick &&
-        m.time - prev.time < 120000}
-      class:men={m.trip !== identity.trip &&
-        (m.kind === "whisper" || m.text.includes("@" + identity.nick))}
-      class:self={m.trip === identity.trip}
+      class:cont={grouped(m, prev)}
+      class:men={!!m.trip &&
+        !own(m) &&
+        (m.kind === "whisper" || mentions(m.text, identity.nick))}
+      class:self={own(m)}
     >
       <button
         class="tm"
         disabled={!m.ref}
         title={m.ref}
         on:click={() => m.ref && insert(">>" + m.ref + " ")}
-        ><span class="hm">{$clock(m.time)}</span><span class="id"
-          >»{$t("quote")}</span
-        ></button
+        ><span class="hm"
+          >{time.slice(0, -3)}<span class="s">{time.slice(-3)}</span></span
+        ><span class="id">»{$t("quote")}</span></button
       >
       <button
         class="tr"
-        disabled={!m.ref}
-        title={m.trip}
-        on:click={() => m.ref && insert(">>" + m.ref + " ")}
+        disabled={!m.trip || !m.nick || own(m)}
+        title={m.trip && m.nick && !own(m)
+          ? $t("whisperTo", { name: m.nick + "#" + m.trip })
+          : m.trip}
+        on:click={() => m.trip && m.nick && whisper(m.nick + "#" + m.trip)}
         >{m.trip?.slice(0, 5) || ""}</button
       >
       <button
         disabled={!m.nick}
         class={"nk " + (m.trip ? color(m.trip) : "")}
         class:clash={clash(m.nick, m.trip, users)}
-        title={m.nick ? m.nick + "#" + m.trip : ""}
+        title={m.nick ? $t("mention", { name: m.nick + "#" + m.trip }) : ""}
         on:click={() => m.nick && insert("@" + m.nick + " ")}
         >{m.nick || (m.kind === "presence" ? "±" : "--")}</button
       >
@@ -85,6 +95,7 @@
           text={m.kind === "sys" || m.kind === "presence"
             ? displayEvent($t, m)
             : m.text}
+          me={identity.nick}
           {jump}
         /></span
       >
