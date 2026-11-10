@@ -17,6 +17,8 @@ scripts/**
 web/**
 !web/package*.json
 !web/*.config.js
+!web/*.config.ts
+!web/tsconfig.json
 !web/src
 !web/src/**
 !dist

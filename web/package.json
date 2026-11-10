@@ -2,7 +2,7 @@
   "name": "pulsec-web",
   "version": "1.0.0",
   "scripts": {
-    "build": "vite build",
+    "build": "svelte-kit sync && vite build",
     "check": "svelte-kit sync && svelte-check --fail-on-warnings",
     "format": "prettier --write \"src/**/*.{ts,js,svelte}\" \"test/**/*.ts\" \"*.config.{js,ts}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js,svelte}\" \"test/**/*.ts\" \"*.config.{js,ts}\"",
