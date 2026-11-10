@@ -15,7 +15,7 @@ The browser sends and receives messages over WebTransport. The Go relay and Svel
 On Linux, run this from the source tree or an unpacked binary distribution:
 
 ```sh
-docker compose -f compose.yaml -f compose.local.yaml up -d --build
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-build
 ```
 
 Open <http://127.0.0.1:8443>.

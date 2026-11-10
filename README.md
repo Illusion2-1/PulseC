@@ -15,7 +15,7 @@
 在 Linux 上，从源码目录或解压后的二进制发行目录运行：
 
 ```sh
-docker compose -f compose.yaml -f compose.local.yaml up -d --build
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-build
 ```
 
 打开 <http://127.0.0.1:8443>。

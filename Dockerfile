@@ -1,15 +1,17 @@
 ARG NODE_IMAGE=node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 ARG GO_IMAGE=golang:1.26.10-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473
 
-FROM ${NODE_IMAGE} AS ui
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS ui
 WORKDIR /src/web
 COPY web/package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
-FROM ${GO_IMAGE} AS compile
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS compile
 ARG VERSION
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -21,7 +23,7 @@ COPY scripts/go-notices.py ./scripts/go-notices.py
 RUN python3 scripts/go-notices.py > web/build/THIRD-PARTY-Go.txt
 RUN --mount=type=bind,target=/repo \
     version=$(cd /repo && sh scripts/version.sh) && \
-    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$version" -o /out/pulsec .
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$version" -o /out/pulsec .
 
 FROM scratch AS runtime
 USER 65532:65532

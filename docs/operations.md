@@ -2,6 +2,8 @@
 
 在 Linux 上从源码目录或解压后的发行目录运行以下命令。Compose 需要 2.24.4 或更新版本。下载二进制包后，可先在下载目录运行 `sha256sum --ignore-missing -c SHA256SUMS` 校验归档。解压时保留隐藏文件，编辑已有 `.env` 时保留包内的构建选项。
 
+本地构建时将 `--no-build` 改为 `--build`。
+
 <a name="caddy"></a>
 
 ## 在已有 Caddy 上加一个站点
@@ -9,7 +11,7 @@
 在 PulseC 的 `.env` 中加入 `PULSEC_BEHIND_PROXY=true`，然后启动中继：
 
 ```sh
-docker compose -f compose.yaml -f compose.local.yaml up -d --build
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-build
 ```
 
 PulseC 默认只监听 `127.0.0.1:8443`。如果用 `PULSEC_PORT` 改了端口，同步修改站点块中的上游端口。已有 Caddy 如果运行在独立容器内，再在 `.env` 设置 `PULSEC_LOCAL_NETWORK=container:现有容器名`，让两个进程共用回环接口。该 Caddy 容器重新创建后，也要重新创建 PulseC。
@@ -34,7 +36,7 @@ PULSEC_DOMAIN=chat.example.org
 ```
 
 ```sh
-docker compose -f compose.yaml -f compose.direct.yaml up -d --build
+docker compose -f compose.yaml -f compose.direct.yaml up -d --no-build
 docker compose -f compose.yaml -f compose.direct.yaml logs --tail=20 certbot pulsec
 ```
 
@@ -44,7 +46,7 @@ docker compose -f compose.yaml -f compose.direct.yaml logs --tail=20 certbot pul
 
 ## 其他启动方式
 
-- **本机试聊**使用 `docker compose -f compose.yaml -f compose.local.yaml up -d --build`，以默认的本机模式打开 <http://127.0.0.1:8443>。
+- **本机试聊**使用 `docker compose -f compose.yaml -f compose.local.yaml up -d --no-build`，以默认的本机模式打开 <http://127.0.0.1:8443>。
 - **自备证书**使用基础 `compose.yaml`。在 `.env` 中设置 `PULSEC_CERT_DIR` 和能读取私钥的 `PULSEC_TLS_GID`，提供 `fullchain.pem` 和 `privkey.pem`。设置 `PULSEC_BIND_IP=0.0.0.0`、`PULSEC_PORT=443` 可对公网开放。更换证书对后运行 `docker compose kill -s HUP pulsec`。
 - **直接运行二进制**可用 `./pulsec -behind-proxy` 接入同机 Caddy。自备证书时可用 `./pulsec -addr :443 -cert fullchain.pem -key privkey.pem`。运行账号需有监听相应端口和读取所选文件的权限。其他选项见 `./pulsec -help`，systemd 单元示例在 `deploy/pulsec.service`。
 
@@ -52,4 +54,4 @@ docker compose -f compose.yaml -f compose.direct.yaml logs --tail=20 certbot pul
 
 用两个浏览器打开同一频道，互发一条消息。页面正常但无法进房时，检查公网 UDP 443。使用 Caddy 时也检查回环上游地址和 Caddy 的 WebTransport 配置。
 
-升级时保留上一版目录、镜像及配置，按版本设置 `PULSEC_IMAGE`。回退时切回旧目录，用相同的项目名和 `-f` 参数运行 `up -d --no-build --force-recreate`，再从已有标签页和新标签页验证收发。
+升级时保留上一版目录、镜像及配置，按版本设置 `PULSEC_IMAGE`。回退时切回旧目录，用相同的项目名和 `-f` 参数运行 `up -d --no-build --pull never --force-recreate`，再从已有标签页和新标签页验证收发。

@@ -27,6 +27,8 @@ jobs:
       - name: Validate Compose profiles
         run: |
           docker compose config -q
+          docker compose config --format json |
+            jq -e '.services.pulsec | .image == "illusionn21/pulsec:latest" and .pull_policy == "always" and .build.target == "source"'
           docker compose -f compose.yaml -f compose.local.yaml config -q
           export PULSEC_DOMAIN=chat.example.org
           public_ports='[.ports[] | "\(.published)/\(.protocol)"] | sort == ["443/tcp", "443/udp", "80/tcp"]'

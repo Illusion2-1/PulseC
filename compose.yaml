@@ -1,6 +1,7 @@
 services:
   pulsec:
-    image: ${PULSEC_IMAGE:-pulsec:0.1.0-rc.1}
+    image: ${PULSEC_IMAGE:-illusionn21/pulsec:latest}
+    pull_policy: ${PULSEC_PULL_POLICY:-always}
     build:
       context: .
       target: ${PULSEC_TARGET:-source}
