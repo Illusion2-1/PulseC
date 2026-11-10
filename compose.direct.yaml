@@ -1,18 +1,13 @@
-# PulseC serves HTTP-01 on TCP 80, HTTPS on TCP 443 and WebTransport on UDP 443.
+# PulseC answers HTTP-01 on port 80. Certbot obtains and renews its TLS certificate.
 services:
   pulsec:
     ports: !override
-      - "${PULSEC_BIND_IP:-127.0.0.1}:80:8080/tcp"
-      - "${PULSEC_BIND_IP:-127.0.0.1}:443:8443/tcp"
-      - "${PULSEC_BIND_IP:-127.0.0.1}:443:8443/udp"
-    volumes:
-      - type: bind
-        source: ${PULSEC_WEBROOT:?Set PULSEC_WEBROOT to the Certbot webroot}
-        target: /acme
-        read_only: true
-        bind:
-          create_host_path: false
-          selinux: Z
+      - "${PULSEC_BIND_IP:-0.0.0.0}:80:8080/tcp"
+      - "${PULSEC_BIND_IP:-0.0.0.0}:443:8443/tcp"
+      - "${PULSEC_BIND_IP:-0.0.0.0}:443:8443/udp"
+    volumes: !override
+      - acme_webroot:/acme:ro
+      - relay_tls:/tls:ro
     command:
       - -addr
       - ":8443"
@@ -23,8 +18,31 @@ services:
       - -acme-webroot
       - /acme
       - -cert
-      - /tls/fullchain.pem
+      - /tls/site.pem
       - -key
-      - /tls/privkey.pem
+      - /tls/site.pem
       - -stats-interval
       - 1m
+  certbot:
+    image: certbot/certbot:v5.9.0@sha256:bc93cb710b413e6b456d622f9b0133b3e109c0a78c2ed9976af43d209b0a1805
+    entrypoint: ["/bin/sh", "/opt/pulsec-certbot.sh"]
+    environment:
+      PULSEC_DOMAIN: ${PULSEC_DOMAIN:?Set PULSEC_DOMAIN to the public DNS name}
+      PULSEC_ACME_EMAIL: ${PULSEC_ACME_EMAIL:-}
+    depends_on: [pulsec]
+    volumes:
+      - ./deploy/certbot.sh:/opt/pulsec-certbot.sh:ro,z
+      - certbot_state:/etc/letsencrypt
+      - acme_webroot:/acme
+      - relay_tls:/tls
+    tmpfs: [/tmp, /var/lib/letsencrypt, /var/log/letsencrypt]
+    group_add: ["65532"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+volumes:
+  certbot_state:
+  acme_webroot:
+  relay_tls:
