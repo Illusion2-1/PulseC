@@ -141,12 +141,24 @@
 .ln .id {
   display: none;
 }
-.ln .lf:hover .tm .hm,
-.ln .tm:focus-visible .hm {
+/* 选区两端决定最左可选列。拖动时允许光标进入下一列，松开后保留选区。 */
+.log[data-select-from="tx"] .lf > *,
+.log[data-select-from="nk"] .lf > :is(.tr, .tm),
+.log[data-select-from="tr"] .lf > .tm,
+.log[data-select-from] > .div {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ln .lf > button,
+.log:active > .div:hover,
+.log:active .lf > :is(.nk, .tr, .tm):hover {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.log:not(:active, [data-select-from]) :is(.lf:hover .tm, .tm:focus-visible) .hm {
   display: none;
 } /* 悬停左栏时时间位换成“引用” */
-.ln .lf:hover .id,
-.ln .tm:focus-visible .id {
+.log:not(:active, [data-select-from]) :is(.lf:hover .tm, .tm:focus-visible) .id {
   display: inline;
   color: var(--amber);
   cursor: pointer;

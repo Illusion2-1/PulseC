@@ -37,10 +37,35 @@
     !!m.trip && !own(m) && (m.kind === "whisper" || mentions(m.text, me));
   const notice = (m: LogEntry) => m.kind === "sys" || m.kind === "presence";
   const author = (m: LogEntry) => !!m.trip && !!m.nick;
+
+  const columns = ["tm", "tr", "nk", "tx"] as const;
+  let selectedFrom = $state<(typeof columns)[number]>();
+
+  function column(node: Node | null) {
+    const el = node instanceof Element ? node : node?.parentElement;
+    return columns.findIndex((name) => el?.closest("." + name));
+  }
+
+  function updateSelection() {
+    const selection = document.getSelection();
+    const log = chat.view.log;
+    selectedFrom =
+      selection &&
+      !selection.isCollapsed &&
+      log?.contains(selection.anchorNode) &&
+      log.contains(selection.focusNode)
+        ? columns[
+            Math.min(column(selection.anchorNode), column(selection.focusNode))
+          ]
+        : undefined;
+  }
 </script>
+
+<svelte:document onselectionchange={updateSelection} />
 
 <div
   class="log"
+  data-select-from={selectedFrom}
   style:--lanes={links.lanes}
   role="log"
   aria-label={t("message")}

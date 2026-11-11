@@ -61,6 +61,39 @@ async function drained(p) {
 async function sees(p, text) {
   await messages(p).filter({hasText: text}).first().waitFor();
 }
+async function checkMessageSelection(p) {
+  await p.bringToFront();
+  const rows = p.locator(".ln.who").filter({hasText: /private-probe|public-barrier/});
+  await rows.nth(1).waitFor();
+  async function moveToText(cell, end = false) {
+    const [x, y] = await cell.evaluate((el, end) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const lines = [...range.getClientRects()].filter(rect => rect.width > 0);
+      const rect = end ? lines.at(-1) : lines[0];
+      return [end ? rect.right - 1 : rect.left + 1, rect.top + rect.height / 2];
+    }, end);
+    await p.mouse.move(x, y, {steps: 4});
+  }
+
+  await moveToText(rows.last().locator(".tx"), true);
+  await p.mouse.down();
+  const fields = [".tr", ".nk", ".tx"];
+  if (await rows.first().locator(".tm").isVisible()) fields.unshift(".hm");
+  for (const field of [...fields.toReversed(), ".tx"]) {
+    await moveToText(rows.first().locator(field));
+    const included = fields.slice(fields.indexOf(field)).join(",");
+    const expected = (await rows.locator(included).allTextContents()).join("\n");
+    await p.waitForFunction(text => getSelection().toString() === text, expected);
+  }
+  await p.mouse.up();
+  await p.keyboard.press("ControlOrMeta+c");
+  const draft = p.locator("textarea");
+  await draft.focus();
+  await draft.press("ControlOrMeta+v");
+  assert.equal(await draft.inputValue(), (await rows.locator(".tx").allTextContents()).join("\n"));
+  await draft.fill("");
+}
 async function checkMessageTree(p, size) {
   const segments = await p.locator("svg.tree-branch").evaluateAll(trees => trees.map(tree => {
     const trunk = tree.querySelector("line").getBoundingClientRect();
@@ -131,6 +164,11 @@ try {
   await send(bob, "public-barrier");
   await sees(late, "public-barrier");
   assert.deepEqual(await messages(late).allTextContents(), ["public-barrier"]);
+  if (!process.env.QA_LEGACY_UI) {
+    await checkMessageSelection(alice);
+    await checkMessageSelection(bob);
+    console.log("PASS cross-row text selection and copy on desktop and narrow screens");
+  }
   await bob.reload();
   await bob.locator(".u").first().waitFor({state: "attached"});
   await sees(bob, "release-check-0");
