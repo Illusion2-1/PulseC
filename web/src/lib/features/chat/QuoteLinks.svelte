@@ -55,7 +55,11 @@
     if (!log || !el) return;
     const update = () => measure(log, el, layout);
     update();
-    const sizes = new ResizeObserver(update);
+    const sizes = new ResizeObserver(() => {
+      update();
+      chat.view.followBottom();
+    });
+    sizes.observe(log);
     const watch = (nodes: Iterable<Node>) => {
       for (const n of nodes) if (n instanceof HTMLElement) sizes.observe(n);
     };

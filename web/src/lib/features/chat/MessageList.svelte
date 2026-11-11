@@ -72,7 +72,7 @@
   onscroll={() => chat.view.scrolled()}
 >
   <QuoteLinks layout={links} {activeRow} />
-  {#each items as m, i}
+  {#each items as m, i (m)}
     {@const prev = items[i - 1]}
     {@const time = clock(m.time)}
     {@const shape = shapes[i]}

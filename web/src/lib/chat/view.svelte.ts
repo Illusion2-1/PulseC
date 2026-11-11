@@ -11,22 +11,30 @@ export class ViewState {
   membersOpen = $state(false);
   log: HTMLElement | undefined = $state();
   membersToggle: HTMLElement | undefined = $state();
-
-  /** Within 40 px of the end, new rows keep the log pinned to the bottom. */
-  atBottom() {
-    const log = this.log;
-    return !log || log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-  }
+  // Keep the reader's scroll intent across pending sends and late formula layout.
+  following = true;
+  #followTop: number | undefined;
 
   bottom() {
     this.below = 0;
-    tick().then(() => {
-      if (this.log) this.log.scrollTop = this.log.scrollHeight;
-    });
+    this.following = true;
+    tick().then(() => this.followBottom());
+  }
+
+  followBottom() {
+    const log = this.log;
+    if (!log || !this.following) return;
+    log.scrollTop = log.scrollHeight;
+    this.#followTop = log.scrollTop;
   }
 
   scrolled() {
-    if (this.atBottom()) this.below = 0;
+    const log = this.log;
+    if (!log) return;
+    // Our own scroll event can arrive after new content has moved the bottom.
+    if (this.following && log.scrollTop === this.#followTop) return;
+    this.following = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    if (this.following) this.below = 0;
   }
 
   closeMembers() {
@@ -47,6 +55,7 @@ export class ViewState {
     const el = document.getElementById("m-" + ref);
     if (!el) return false;
     el.scrollIntoView({ block: "center" });
+    this.scrolled();
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
       el.animate(
         [{ background: "#453710" }, { background: "transparent" }],
