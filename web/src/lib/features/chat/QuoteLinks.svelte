@@ -1,11 +1,21 @@
 <script lang="ts">
   import { useChat } from "#lib/chat/context.ts";
-  import { lanePath, type Lanes } from "#lib/core/timeline.ts";
+  import {
+    lanePath,
+    type LaneGeometry,
+    type Lanes,
+  } from "#lib/core/timeline.ts";
 
-  let { layout }: { layout: Lanes } = $props();
+  let { layout, activeRow }: { layout: Lanes; activeRow: number } = $props();
   const chat = useChat();
   let svg: SVGSVGElement | undefined = $state();
-  let d = $state("");
+  let geometry = $state.raw<LaneGeometry>();
+  const d = $derived(geometry ? lanePath(layout, geometry) : "");
+  const highlight = $derived(
+    geometry && layout.neighbors[activeRow]
+      ? lanePath(layout, geometry, activeRow)
+      : "",
+  );
   let height = $state(0);
 
   // Centre 1px strokes on a pixel so they stay sharp.
@@ -28,12 +38,12 @@
     }
     const tip = svg.getBoundingClientRect().width,
       ch = (tip + 2) / (layout.lanes + 2);
-    d = lanePath(layout, {
+    geometry = {
       x: (lane) => snap((layout.lanes - lane + 0.5) * ch),
       tip,
       y: (row) => ys[row],
       hop: Math.min(3, ch / 3),
-    });
+    };
     height = bottom;
   }
 
@@ -62,5 +72,7 @@
   });
 </script>
 
-<svg class="links" bind:this={svg} {height} aria-hidden="true"><path {d} /></svg
->
+<svg class="links" bind:this={svg} {height} aria-hidden="true">
+  <path {d} />
+  {#if highlight}<path class="lit" d={highlight} />{/if}
+</svg>

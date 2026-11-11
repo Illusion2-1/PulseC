@@ -3,12 +3,7 @@
   import { colorOf } from "#lib/core/colors.ts";
   import { clash, handle } from "#lib/core/identity.ts";
   import { mentions } from "#lib/core/text.ts";
-  import {
-    quoteLanes,
-    sameDay,
-    threads,
-    type Shape,
-  } from "#lib/core/timeline.ts";
+  import { quoteLanes, sameDay, threads } from "#lib/core/timeline.ts";
   import { clock, date, t } from "#lib/i18n/locale.svelte.ts";
   import { displayEvent, isWarning } from "#lib/i18n/translate.ts";
   import type { LogEntry } from "#lib/types.ts";
@@ -31,10 +26,9 @@
   // the message itself. Rows written by a person also carry a faint stripe.
   const roster = $derived(new Map(users.map((u) => [handle(u), u])));
 
-  // Hover or focus on a tree's first row lights the whole tree.
-  let hot: { m: LogEntry; tree: boolean } | null = $state.raw(null);
-  const lit = (m: LogEntry, shape: Shape) =>
-    !!hot && (hot.m === m || (hot.tree && hot.m === shape.root));
+  let hot = $state.raw<LogEntry | null>(null);
+  const activeRow = $derived(hot ? items.indexOf(hot) : -1);
+  const partners = $derived(links.neighbors[activeRow]);
   const own = (m: LogEntry) => !!m.trip && m.trip === chat.identity?.trip;
   const spoken = (m: LogEntry) =>
     !!m.trip && (m.kind === "chat" || m.kind === "me" || m.kind === "whisper");
@@ -77,7 +71,7 @@
   bind:this={chat.view.log}
   onscroll={() => chat.view.scrolled()}
 >
-  <QuoteLinks layout={links} />
+  <QuoteLinks layout={links} {activeRow} />
   {#each items as m, i}
     {@const prev = items[i - 1]}
     {@const time = clock(m.time)}
@@ -109,12 +103,12 @@
       class:leaf={shape.leaf}
       class:root={shape.size > 1}
       class:last={shape.last}
-      class:lit={lit(m, shape)}
+      class:lit={hot === m || hot === shape.root || partners?.has(i)}
       class:men={pinged(m)}
       class:self={own(m)}
-      onmouseenter={() => (hot = { m, tree: !shape.leaf })}
+      onmouseenter={() => (hot = m)}
       onmouseleave={() => (hot = null)}
-      onfocusin={() => (hot = { m, tree: !shape.leaf })}
+      onfocusin={() => (hot = m)}
       onfocusout={() => (hot = null)}
     >
       <div class="lf">
