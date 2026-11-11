@@ -38,6 +38,17 @@ export default {
         "style-src-attr": [
           "unsafe-hashes",
           "sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo=",
+          // KaTeX's stacked braces/arrows use fixed SVG widths. Parse errors
+          // use the theme color passed to render().
+          ...[
+            "width:0.8889em",
+            "width:0.6667em",
+            "width:0.7778em",
+            "color:var(--red)",
+          ].map(
+            (style) =>
+              "sha256-" + createHash("sha256").update(style).digest("base64"),
+          ),
         ],
         "img-src": ["self", "data:"],
         "connect-src": ["self"],

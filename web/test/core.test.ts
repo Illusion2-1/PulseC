@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
+import { highlight } from "../src/lib/core/highlight";
 import {
   clash,
   deriveProof,
@@ -111,4 +112,75 @@ test("message markup separates code, links, quotes and mentions", () => {
   const [line] = (parse(">>0123456789ab")[0] as { lines: { quote: boolean }[] })
     .lines;
   assert.equal(line.quote, false, ">>ref is not a quote line");
+});
+
+test("fenced code honors language aliases and guesses only unlabeled blocks", () => {
+  const code = 'def greet():\n    return "hello"';
+  const tree = highlight("PY", code);
+  assert.ok(
+    tree?.children.some(
+      (node) =>
+        node.type === "element" &&
+        Array.isArray(node.properties.className) &&
+        node.properties.className.includes("hljs-keyword"),
+    ),
+  );
+  assert.equal(highlight("", code)?.data?.language, "python");
+  assert.equal(highlight("unknown", code), undefined);
+  assert.deepEqual(highlight("text", code)?.children, [
+    { type: "text", value: code },
+  ]);
+  assert.equal(highlight("", "   "), undefined);
+  assert.deepEqual(parse("```C#\nclass C {}\n```")[1], {
+    kind: "code",
+    lang: "C#",
+    lines: ["class C {}"],
+  });
+});
+
+test("display math spans lines without consuming neighboring chat markup", () => {
+  const formula = String.raw`$$
+\begin{aligned}
+A &= \begin{pmatrix}1 & 0 \\ 0 & 1\end{pmatrix} \\
+b &= \text{@neo >>aaaaaaaaaaaa}
+\end{aligned}
+$$`;
+  const [block] = parse("Use $A$:\n" + formula + "\n> @neo");
+  assert.equal(block.kind, "prose");
+  assert.deepEqual(block.lines, [
+    {
+      quote: false,
+      tokens: [
+        { kind: "text", text: "Use " },
+        { kind: "math", source: "$A$" },
+        { kind: "text", text: ":" },
+      ],
+    },
+    { quote: false, tokens: [{ kind: "math", source: formula }] },
+    {
+      quote: true,
+      tokens: [
+        { kind: "text", text: "> " },
+        { kind: "mention", nick: "neo" },
+      ],
+    },
+  ]);
+});
+
+test("math delimiters respect code, URLs, prices and escaped dollars", () => {
+  const input = String.raw`$5 and $10; \$x\$; https://x.test/$x$; \(x+1\) \[y\] $a+\$b$`;
+  const [prose, code] = parse(input + " `$x$`\n```tex\n$$x$$\n```");
+  assert.equal(prose.kind, "prose");
+  assert.deepEqual(
+    prose.lines[0].tokens.filter((t) => t.kind === "math").map((t) => t.source),
+    [String.raw`\(x+1\)`, String.raw`\[y\]`, String.raw`$a+\$b$`],
+  );
+  assert.deepEqual(prose.lines[0].tokens.at(-1), { kind: "code", code: "$x$" });
+  assert.deepEqual(code, { kind: "code", lang: "tex", lines: ["$$x$$"] });
+  assert.deepEqual(parse("incomplete $$x")[0], {
+    kind: "prose",
+    lines: [
+      { quote: false, tokens: [{ kind: "text", text: "incomplete $$x" }] },
+    ],
+  });
 });

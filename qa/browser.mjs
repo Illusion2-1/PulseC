@@ -79,6 +79,21 @@ async function checkMessageTree(p, size) {
   }
   assert.equal(segments.at(-1).bottom, segments.at(-1).joint, "trunk ends at the last branch");
 }
+async function checkAlignedMath(p) {
+  const formula = p.locator(".formula.display");
+  await formula.locator(".katex-html").waitFor();
+  await p.evaluate(() => document.fonts.ready);
+  assert.equal(await formula.locator("math > semantics > mtable > mtr").count(), 3);
+  const equals = await formula.locator(".katex-html .mrel").evaluateAll(nodes => nodes
+    .filter(n => n.textContent === "=").map(n => n.getBoundingClientRect().toJSON()));
+  assert.equal(equals.length, 3);
+  for (const [i, sign] of equals.entries()) {
+    assert.ok(Math.abs(sign.x - equals[0].x) < 1, "equations align at the equals sign");
+    if (i) assert.ok(sign.top >= equals[i - 1].bottom, "rows do not overlap");
+  }
+  assert.ok(await formula.evaluate(el => el.scrollHeight <= el.clientHeight + 1));
+  assert.ok(await p.evaluate(() => document.querySelector(".log").scrollWidth <= document.querySelector(".log").clientWidth));
+}
 try {
   let server = await relay(binary);
   const proxy = start("python3", ["impair.py", String(base + 1), String(base)]);
@@ -128,6 +143,16 @@ try {
     assert.equal(await bob.locator("html").getAttribute("lang"), "en");
     await sees(bob, "release-check-0");
     console.log("PASS bilingual session and language switch");
+    const math = String.raw`$$
+\begin{aligned}
+R &= \begin{pmatrix}\cos\theta & -\sin\theta \\ \sin\theta & \cos\theta\end{pmatrix} \\[4pt]
+v &= \frac{1}{\sqrt{2}}\begin{pmatrix}1 \\ 1\end{pmatrix} \\[4pt]
+Rv &= \frac{1}{\sqrt{2}}\begin{pmatrix}\cos\theta-\sin\theta \\ \sin\theta+\cos\theta\end{pmatrix}
+\end{aligned}
+$$`;
+    await send(late, math);
+    await Promise.all([alice, bob].map(checkAlignedMath));
+    console.log("PASS aligned LaTeX with fractions and matrices on desktop and mobile");
   }
   await stop(server);
   await bob.locator(".stat.off").waitFor({ timeout: 70000 });

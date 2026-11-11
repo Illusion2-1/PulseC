@@ -66,6 +66,7 @@ test("quote lanes connect quoted and quoting rows", () => {
     msg("c", 3, ">>aaaaaaaaaaaa yes"),
     msg("d", 4, ">>bbbbbbbbbbbb and >>aaaaaaaaaaaa"),
     msg("e", 5, "`>>bbbbbbbbbbbb` in code, >>ffffffffffff missing"),
+    msg("f", 6, "$$\\text{>>aaaaaaaaaaaa}$$ inside math"),
   ];
   const layout = quoteLanes(items);
   assert.equal(layout.lanes, 2);

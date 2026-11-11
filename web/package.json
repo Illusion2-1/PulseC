@@ -29,5 +29,9 @@
     "@sveltejs/kit": {
       "cookie": "0.7.2"
     }
+  },
+  "dependencies": {
+    "katex": "^0.19.1",
+    "lowlight": "^3.3.0"
   }
 }

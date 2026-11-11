@@ -300,7 +300,6 @@
   border-left: 1px solid var(--fg-2);
   margin: 2px 0;
   padding: 0 1ch 0 0;
-  counter-reset: l;
   overflow-x: auto;
   white-space: pre;
 }
@@ -317,18 +316,33 @@
 .blk .cp:hover {
   color: var(--amber);
 }
-.blk .l {
-  display: block;
-  counter-increment: l;
+.blk .code-lines {
+  display: grid;
+  grid-template-columns: minmax(4ch, max-content) max-content;
 }
-.blk .l::before {
-  content: counter(l);
-  display: inline-block;
-  width: 4ch;
+.blk .line-numbers {
   padding-right: 1ch;
   text-align: right;
   color: var(--fg-2);
   user-select: none;
+}
+.blk :is(.hljs-comment, .hljs-quote) {
+  color: var(--fg-2);
+}
+.blk :is(.hljs-keyword, .hljs-selector-tag, .hljs-meta) {
+  color: #e6ad70;
+}
+.blk :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attr) {
+  color: #a8ca88;
+}
+.blk :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-variable) {
+  color: #c9a4df;
+}
+.blk :is(.hljs-title, .hljs-built_in, .hljs-type, .hljs-name, .hljs-attribute, .hljs-selector-class) {
+  color: #8fc3da;
+}
+.blk .hljs-deletion {
+  color: #e7998c;
 }
 
 /* 未读分隔线 / 时间刻度 */

@@ -1,4 +1,5 @@
 import type { LogEntry } from "../types";
+import { messageMarks } from "./markup";
 
 const day = (time: number) => new Date(time).toDateString();
 export const sameDay = (a: number, b: number) => day(a) === day(b);
@@ -73,16 +74,15 @@ export interface Lanes {
 // with a branch at every quoter in between. Shorter links take inner lanes and
 // pack tightly near the text; long links go outside, and are the ones left out
 // when they do not fit in `max` lanes (the >>ref stays clickable).
-const quoted = /```[\s\S]*?```|`[^`\n]+`/g;
 export function quoteLanes(items: LogEntry[], max = 6): Lanes {
   const at = new Map<string, number>();
   items.forEach((m, i) => m.ref && at.set(m.ref, i));
   const groups = new Map<number, number[]>();
   items.forEach((m, i) => {
-    if (!m.trip || typeof m.text !== "string") return;
-    const text = m.text.replace(quoted, "");
-    for (const [, ref] of text.matchAll(/>>([a-f0-9]{12})/g)) {
-      const from = at.get(ref);
+    if (!m.trip || typeof m.text !== "string" || !m.text.includes(">>")) return;
+    for (const [mark] of m.text.matchAll(messageMarks)) {
+      if (!mark.startsWith(">>")) continue;
+      const from = at.get(mark.slice(2));
       if (from === undefined || from >= i) continue;
       const list = groups.get(from) || [];
       if (list.at(-1) !== i) list.push(i);
