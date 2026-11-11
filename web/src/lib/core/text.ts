@@ -29,9 +29,11 @@ export function completions(
     .sort((a, b) => a.length - b.length || a.localeCompare(b));
 }
 
-/** A bar chart of activity buckets in block characters. */
-export const spark = (a: number[]) =>
-  a.map((x) => "▁▂▃▄▅▆▇█"[Math.round((x / Math.max(1, ...a)) * 7)]).join("");
+/** Heights in an eight-unit activity chart. A quiet minute keeps a visible baseline. */
+export function pulseHeights(buckets: number[]) {
+  const peak = Math.max(1, ...buckets);
+  return buckets.map((count) => 1 + (7 * count) / peak);
+}
 
 /** Mean messages per bucket, to one decimal. */
 export const averageRate = (a: number[]) =>

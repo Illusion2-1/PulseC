@@ -4,7 +4,7 @@ import {
   averageRate,
   completions,
   mentions,
-  spark,
+  pulseHeights,
 } from "../src/lib/core/text";
 
 test("mentions require a whole nickname", () => {
@@ -35,9 +35,10 @@ test("completions ignore case, drop duplicate tabs and yourself", () => {
   ]);
 });
 
-test("activity renders as blocks scaled to the busiest bucket", () => {
-  assert.equal(spark([0, 1, 2]), "▁▅█");
-  assert.equal(spark([0, 0]), "▁▁");
+test("activity bars scale to the busiest bucket and keep quiet minutes visible", () => {
+  assert.deepEqual(pulseHeights([0, 1, 2]), [1, 4.5, 8]);
+  assert.deepEqual(pulseHeights([0, 0]), [1, 1]);
+  assert.deepEqual(pulseHeights([]), []);
   assert.equal(averageRate([1, 2, 2]), 1.7);
   assert.equal(averageRate([]), 0);
 });

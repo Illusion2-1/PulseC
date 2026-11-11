@@ -99,8 +99,8 @@
           ><span class="hm"
             >{time.slice(0, -3)}<span class="s">{time.slice(-3)}</span></span
           ><span class="id">»{t("quote")}</span></button
-        >{#if shape.leaf}<span></span><span class="br" aria-hidden="true"
-          ></span>{:else}<button
+        >
+        {#if !shape.leaf}<button
             class="tr"
             disabled={!author(m) || own(m)}
             title={author(m) && !own(m)
@@ -121,6 +121,12 @@
                   ? "!!"
                   : "--")}</button
           >{/if}
+        {#if shape.leaf || shape.size > 1}
+          <svg class="tree-branch" aria-hidden="true">
+            <line x1="0.5" x2="0.5" y2="100%" />
+            {#if shape.leaf}<line class="arm" x1="0.5" x2="100%" />{/if}
+          </svg>
+        {/if}
       </div>
       <span class="tx"
         >{m.kind === "whisper"

@@ -76,11 +76,11 @@
   white-space: pre;
 }
 .c .pulse {
+  align-self: center;
   color: var(--fg-2);
-  letter-spacing: -1px;
-  white-space: pre;
 }
 .c .co {
+  grid-column: 3;
   text-align: right;
   color: var(--fg-1);
 }

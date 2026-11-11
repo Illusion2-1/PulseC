@@ -58,13 +58,36 @@
         >✓ {t("confirmed")}
       </span>{/if}<span class="wide"
       >{[...composer.draft].length}/{limits.text}
-    </span><span class="meter" title={t("remaining", { count: chat.left })}
-      >{throttled
-        ? t("cooldown", {
-            seconds: Math.ceil((chat.outbox.until - chat.now) / 1000),
-          })
-        : "▮".repeat(chat.left) + "▯".repeat(limits.burst - chat.left)}</span
-    ></span
+    </span>{#if throttled}<span class="cooldown"
+        >{t("cooldown", {
+          seconds: Math.ceil((chat.outbox.until - chat.now) / 1000),
+        })}</span
+      >{:else}
+      <svg
+        class="meter"
+        role="meter"
+        aria-label={t("sendBudget")}
+        aria-valuemin={0}
+        aria-valuemax={limits.burst}
+        aria-valuenow={chat.left}
+        width="{limits.burst}ch"
+        height="1em"
+        viewBox="0 0 {limits.burst * 6} 10"
+        preserveAspectRatio="none"
+        stroke="currentColor"
+      >
+        <title>{t("remaining", { count: chat.left })}</title>
+        {#each Array(limits.burst) as _, i}
+          <rect
+            x={6 * i + 0.5}
+            y="0.5"
+            width="4"
+            height="9"
+            fill={i < chat.left ? "currentColor" : "none"}
+          />
+        {/each}
+      </svg>
+    {/if}</span
   >
   {#if composer.shown.length}<div class="pop on">
       {#each composer.shown as s, i}<button

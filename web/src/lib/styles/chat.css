@@ -166,38 +166,26 @@
 
 /* 树：同一人 10 分钟内的连续发言，首条是树顶，后续行不再署名，用枝线挂在树顶下。
  * 枝线位于昵称列右侧 2ch 处，颜色取发言人身份色 */
-.ln {
-  --branch: color-mix(in srgb, var(--who, var(--fg-2)) 55%, transparent);
-}
-.ln.root .lf::after {
-  content: "";
-  position: absolute;
-  right: 2ch;
-  top: var(--lh);
-  bottom: calc(-1 * var(--pad));
-  border-left: 1px solid var(--branch);
-}
-.ln .br {
-  position: relative;
-  align-self: stretch;
-}
-.ln .br::before {
-  content: "";
+.tree-branch {
   position: absolute;
   right: 0;
+  top: calc(-1 * var(--pad));
   width: 2ch;
-  top: calc(-1 * var(--pad));
-  height: var(--mid);
-  border-left: 1px solid var(--branch);
-  border-bottom: 1px solid var(--branch);
+  height: calc(100% + 2 * var(--pad));
+  overflow: visible;
+  pointer-events: none;
+  stroke: color-mix(in srgb, var(--who, var(--fg-2)) 55%, transparent);
+  shape-rendering: crispEdges;
 }
-.ln.leaf:not(.last) .br::after {
-  content: "";
-  position: absolute;
-  right: 2ch;
-  top: calc(-1 * var(--pad));
-  bottom: calc(-1 * var(--pad));
-  border-left: 1px solid var(--branch);
+.root .tree-branch {
+  top: var(--lh);
+  height: calc(100% - var(--lh) + var(--pad));
+}
+.last .tree-branch {
+  height: var(--mid);
+}
+.tree-branch .arm {
+  transform: translateY(var(--mid));
 }
 
 /* 引用线：亮琥珀色，从被引用的行出发，沿左侧线道连到每一条引用它的行。
@@ -531,7 +519,6 @@
 }
 .stat .pulse {
   color: var(--fg-1);
-  letter-spacing: -1px;
 } /* 琥珀色留给需要你注意的东西 */
 .stat.off {
   color: #000;
@@ -599,14 +586,11 @@
   color: var(--fg-2);
   line-height: var(--lh);
 }
-.input .meter .on {
-  color: var(--fg-1);
-}
-.input.hot .meter .on {
-  color: var(--amber);
+.input .meter {
+  vertical-align: -0.1em;
 }
 .input.throt .ps,
-.input.throt .meter .on {
+.input .cooldown {
   color: var(--red);
 }
 .input.throt textarea {

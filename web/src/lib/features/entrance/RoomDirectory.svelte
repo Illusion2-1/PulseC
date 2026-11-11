@@ -1,8 +1,8 @@
 <script lang="ts">
   import { useChat } from "$lib/chat/context";
-  import { spark } from "$lib/core/text";
   import { t } from "$lib/i18n/locale.svelte";
   import type { DirectoryRoom } from "$lib/types";
+  import PulseChart from "$lib/ui/PulseChart.svelte";
 
   let {
     target,
@@ -24,8 +24,8 @@
       >#{name}{#if r?.locked}<span class="lk">
           · {t("lockedRoom")}</span
         >{/if}</span
-    ><span class="pulse">{r ? spark(r.pulse.slice(-10)) : ""}</span><span
-      class="co">{chat.foundDirectory ? r?.online || 0 : "—"}</span
+    >{#if r}<PulseChart buckets={r.pulse.slice(-10)} />{/if}<span class="co"
+      >{chat.foundDirectory ? r?.online || 0 : "—"}</span
     >{#if r?.topic}<span class="ct">{r.topic}</span>{/if}</button
   >
 {/snippet}

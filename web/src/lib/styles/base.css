@@ -79,6 +79,9 @@ a {
 .red {
   color: var(--red);
 }
+.pulse {
+  vertical-align: -0.1em;
+}
 
 /* 键位提示：只在有键盘的设备上出现 */
 kbd {

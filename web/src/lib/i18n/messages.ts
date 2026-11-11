@@ -22,6 +22,10 @@ export const messages = {
   channel: ["频道", "Channel"],
   online: ["在线", "Online"],
   pulse: ["活跃度 · 30 分钟", "Activity · 30 min"],
+  pulseSummary: [
+    "最近 {minutes} 分钟，平均每分钟 {rate} 条消息",
+    "Last {minutes} minutes, averaging {rate} messages per minute",
+  ],
   topic: ["主题", "Topic"],
   noPublic: [
     "暂无在线公共频道，可直接进入 #lobby。",
@@ -75,6 +79,7 @@ export const messages = {
     "本轮还可发送 {count} 条",
     "{count} sends available in this window",
   ],
+  sendBudget: ["本轮发送额度", "Sends available in this window"],
   sending: ["发送中", "Sending"],
   confirmed: ["已确认", "Acknowledged"],
   newMessages: ["{count} 条新消息", "{count} new messages"],

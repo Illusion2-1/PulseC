@@ -61,6 +61,24 @@ async function drained(p) {
 async function sees(p, text) {
   await messages(p).filter({hasText: text}).first().waitFor();
 }
+async function checkMessageTree(p, size) {
+  const segments = await p.locator("svg.tree-branch").evaluateAll(trees => trees.map(tree => {
+    const trunk = tree.querySelector("line").getBoundingClientRect();
+    const arm = tree.querySelector(".arm")?.getBoundingClientRect();
+    const body = tree.closest(".ln").querySelector(".tx");
+    const mid = body.getBoundingClientRect().top + parseFloat(getComputedStyle(body).lineHeight) / 2;
+    return { x: trunk.x, top: trunk.top, bottom: trunk.bottom, joint: arm?.y, mid };
+  }));
+  assert.equal(segments.length, size);
+  assert.equal(segments[0].joint, undefined);
+  for (let i = 1; i < segments.length; i++) {
+    const prev = segments[i - 1], next = segments[i];
+    assert.equal(prev.x, next.x);
+    assert.equal(prev.bottom, next.top, "trunk continues across row padding");
+    assert.equal(next.joint, next.mid, "branch meets the first line of text");
+  }
+  assert.equal(segments.at(-1).bottom, segments.at(-1).joint, "trunk ends at the last branch");
+}
 try {
   let server = await relay(binary);
   const proxy = start("python3", ["impair.py", String(base + 1), String(base)]);
@@ -73,17 +91,24 @@ try {
   await alice.locator(".head").getByText("WebTransport · TLS 1.3", {exact: true}).waitFor();
   const bob = await page("Bob", "zh-CN", base + 1, 360);
   await alice.waitForFunction(() => document.querySelectorAll(".u").length === 2);
-  for (let i = 0; i < 6; i++) await send(alice, "release-check-" + i);
+  const burst = Array.from({length: 6}, (_, i) => "release-check-" + i);
+  if (!process.env.QA_LEGACY_UI) burst[1] += "\nsecond line";
+  for (const msg of burst) await send(alice, msg);
   await sees(bob, "release-check-5");
-  assert.deepEqual(await messages(bob).allTextContents(), Array.from({length: 6}, (_, i) => "release-check-" + i));
+  assert.deepEqual(await messages(bob).allTextContents(), burst);
   await drained(alice);
-  await alice.waitForFunction(() => document.querySelector(".meter")?.textContent.trim() === "▯▯▯▯▯▯");
+  await (process.env.QA_LEGACY_UI ? alice.locator(".meter", {hasText: "▯▯▯▯▯▯"}) :
+    alice.locator('[role="meter"][aria-valuenow="0"]')).waitFor();
   await send(alice, "held-by-rate-limit");
   assert.equal(await alice.locator("textarea").inputValue(), "held-by-rate-limit");
   await alice.locator(".input.throt").waitFor();
   assert.equal(await alice.locator(".pend").count(), 0);
   await alice.locator("textarea").fill("");
   console.log("PASS seventh message before cooldown stays in the draft");
+  if (!process.env.QA_LEGACY_UI) {
+    await Promise.all([alice, bob].map(p => checkMessageTree(p, burst.length)));
+    console.log("PASS continuous message tree on desktop and narrow screens");
+  }
   const late = await page("Late");
   await late.locator(".u").first().waitFor();
   await send(bob, "/w Alice private-probe");
@@ -131,7 +156,8 @@ try {
     await send(bob, "/nick BackOnline");
     await alice.locator('.u[title^="BackOnline#"]').waitFor({state: "attached", timeout: 65000});
     // The six-message test can still occupy Alice's entire ten-second window.
-    await alice.waitForFunction(() => document.querySelector(".meter")?.textContent.includes("▮"));
+    await (process.env.QA_LEGACY_UI ? alice.locator(".meter", {hasText: "▮"}) :
+      alice.locator('[role="meter"]:not([aria-valuenow="0"])')).waitFor();
     await send(alice, "after-rollback");
     assert.equal(await alice.locator("textarea").inputValue(), "", "Alice accepted the draft");
     await Promise.all([sees(alice, "after-rollback"), sees(bob, "after-rollback"), drained(alice)]);

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { useChat } from "$lib/chat/context";
-  import { averageRate, spark } from "$lib/core/text";
+  import { averageRate } from "$lib/core/text";
   import { t } from "$lib/i18n/locale.svelte";
+  import PulseChart from "$lib/ui/PulseChart.svelte";
 
   const chat = useChat();
   const users = $derived(chat.state.users);
@@ -24,7 +25,7 @@
     >{t("members", { count: users.length })}</button
   ><span title={t("pulse")}
     ><span class="k wide">{t("pulseLabel")}</span>
-    <span class="pulse">{spark(pulse)}</span>
+    <PulseChart buckets={pulse} />
     <span class="wide">{t("perMinute", { rate: averageRate(pulse) })}</span
     ></span
   ><span class="grow"
