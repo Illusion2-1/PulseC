@@ -160,6 +160,10 @@ async function checkAlignedMath(p) {
   assert.ok(await formula.evaluate(el => el.scrollHeight <= el.clientHeight + 1));
   assert.ok(await p.evaluate(() => document.querySelector(".log").scrollWidth <= document.querySelector(".log").clientWidth));
 }
+function atLogEnd() {
+  const log = document.querySelector(".log");
+  return log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
+}
 try {
   let server = await relay(binary);
   const proxy = start("python3", ["impair.py", String(base + 1), String(base)]);
@@ -225,9 +229,39 @@ v &= \frac{1}{\sqrt{2}}\begin{pmatrix}1 \\ 1\end{pmatrix} \\[4pt]
 Rv &= \frac{1}{\sqrt{2}}\begin{pmatrix}\cos\theta-\sin\theta \\ \sin\theta+\cos\theta\end{pmatrix}
 \end{aligned}
 $$`;
+    // Exercise the history ring without sending 500 live messages through the rate limiter.
+    await late.evaluate(() => {
+      for (let seq = 0; seq < 500; seq++) {
+        const message = {kind: "chat", nick: "Old", trip: "f".repeat(16), time: Date.now(),
+          ref: seq.toString(16).padStart(12, "0"), text: "saved row " + seq};
+        sessionStorage.setItem("pulsec.row.qa." + seq, JSON.stringify({seq, message}));
+      }
+    });
+    await late.reload();
+    await late.locator(".u.me").waitFor();
+    await bob.setViewportSize({width: 360, height: 440});
+    await Promise.all([late, bob].map(p => p.locator("textarea").press("Escape")));
     await send(late, math);
     await Promise.all([alice, bob].map(checkAlignedMath));
-    console.log("PASS aligned LaTeX with fractions and matrices on desktop and mobile");
+    await Promise.all([late, bob].map(p => p.waitForFunction(atLogEnd)));
+    const mathId = await late.locator(".ln.who").last().getAttribute("id");
+    await send(late, ">>" + mathId.slice(2) + " after-formula");
+    await Promise.all([late, bob].map(async p => {
+      await sees(p, "after-formula");
+      await p.waitForFunction(atLogEnd);
+    }));
+
+    const oldRow = late.locator("#m-0000000000fa");
+    const top = await oldRow.evaluate(el => {
+      el.scrollIntoView({block: "center"});
+      return el.getBoundingClientRect().top;
+    });
+    await send(bob, "while reading history");
+    await late.locator(".below").waitFor();
+    assert.ok(Math.abs(await oldRow.evaluate(el => el.getBoundingClientRect().top) - top) <= 1);
+    await late.locator(".below").click();
+    await late.waitForFunction(atLogEnd);
+    console.log("PASS multiline math, follow-up quotes and reading position as history rolls over");
   }
   await stop(server);
   await bob.locator(".stat.off").waitFor({ timeout: 70000 });

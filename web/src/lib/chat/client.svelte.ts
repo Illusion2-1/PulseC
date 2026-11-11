@@ -234,7 +234,6 @@ export class ChatClient {
   add(name: string, m: LogEntry) {
     const room = this.rooms.get(name);
     if (!room || (m.ref && room.log.some((x) => x.ref === m.ref))) return;
-    const stick = this.view.atBottom();
     const prev = room.log.at(-1);
     const merge =
       m.kind === "presence" &&
@@ -269,7 +268,7 @@ export class ChatClient {
         this.away = [...this.away, m].slice(-limits.history);
         if (pinged) this.awayMention = true;
       }
-      if (stick) this.view.bottom();
+      if (this.view.following) this.view.bottom();
       else this.view.below++;
     }
   }

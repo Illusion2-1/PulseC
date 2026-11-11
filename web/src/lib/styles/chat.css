@@ -204,6 +204,8 @@
  * 整个日志共用一张 SVG，每条线是一笔连续的路径；横线越过别的线道时画成半圆跨线 */
 .links {
   position: absolute;
+  /* 阅读旧消息时，让可见的消息行成为滚动锚点。 */
+  overflow-anchor: none;
   top: 0;
   left: 0;
   width: calc((var(--lanes, 0) + 2) * 1ch - 2px);
