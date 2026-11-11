@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { averageRate, pulseHeights } from "$lib/core/text";
-  import { t } from "$lib/i18n/locale.svelte";
+  import { averageRate, pulseHeights } from "#lib/core/text.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
 
   let { buckets }: { buckets: number[] } = $props();
   const heights = $derived(pulseHeights(buckets));

@@ -19,7 +19,8 @@ func events(t *testing.T, p *Peer) []event {
 	var list []event
 	for len(p.send) > 0 {
 		var e event
-		if err := json.Unmarshal(<-p.send, &e); err != nil {
+		b, _ := p.Next(t.Context())
+		if err := json.Unmarshal(b, &e); err != nil {
 			t.Fatal(err)
 		}
 		list = append(list, e)

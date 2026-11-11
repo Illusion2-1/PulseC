@@ -4,6 +4,7 @@
 export const nickPattern = /^[\p{L}\p{N}_-]{1,16}$/u;
 export const roomPattern = /^[\p{L}\p{N}_-]{1,24}$/u;
 export const tripPattern = /^[a-f0-9]{16}$/;
+export const handlePattern = /^[\p{L}\p{N}_-]{1,16}#[a-f0-9]{16}$/u;
 export const proofPattern = /^[a-f0-9]{64}$/;
 export const colorPattern = /^#[a-f0-9]{6}$/;
 

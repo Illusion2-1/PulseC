@@ -27,18 +27,20 @@ func (h *Hub) moderate(p *Peer, c protocol.Command) {
 		p.reject(c, protocol.NotAdmin)
 		return
 	}
+	nick := ""
 	switch c.Action {
 	case "kick", "ban", "unban", "mute", "unmute", "op", "deop":
 		if !h.targetAllowed(p, r, c) {
 			return
 		}
-	}
-	nick := ""
-	for u := range r.members {
-		if u.trip == c.Target {
-			nick = u.nick
-			break
+		for u := range r.members {
+			if u.trip == c.Target {
+				nick = u.nick
+				break
+			}
 		}
+	default:
+		c.Target = "" // Room-wide actions have no recipient to broadcast.
 	}
 	on, rate := c.On, 0
 	switch c.Action {
@@ -54,6 +56,7 @@ func (h *Hub) moderate(p *Peer, c protocol.Command) {
 			return
 		}
 		list[c.Target] = true
+		delete(r.mods, c.Target)
 		on = true
 	case "unban":
 		delete(r.banned, c.Target)

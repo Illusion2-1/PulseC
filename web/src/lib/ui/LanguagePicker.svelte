@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { locale } from "$lib/i18n/locale.svelte";
-  import type { Locale } from "$lib/i18n/translate";
+  import { locale } from "#lib/i18n/locale.svelte.ts";
+  import type { Locale } from "#lib/i18n/translate.ts";
 </script>
 
 <select

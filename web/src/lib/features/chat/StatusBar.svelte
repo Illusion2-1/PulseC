@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { averageRate } from "$lib/core/text";
-  import { t } from "$lib/i18n/locale.svelte";
-  import PulseChart from "$lib/ui/PulseChart.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { averageRate } from "#lib/core/text.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
+  import PulseChart from "#lib/ui/PulseChart.svelte";
 
   const chat = useChat();
   const users = $derived(chat.state.users);

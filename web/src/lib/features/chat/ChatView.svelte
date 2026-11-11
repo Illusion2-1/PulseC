@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { t } from "$lib/i18n/locale.svelte";
-  import TopBar from "$lib/ui/TopBar.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
+  import TopBar from "#lib/ui/TopBar.svelte";
   import ChannelTabs from "./ChannelTabs.svelte";
   import Composer from "./Composer.svelte";
   import MemberList from "./MemberList.svelte";

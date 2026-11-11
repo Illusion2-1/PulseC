@@ -72,6 +72,7 @@ func (g *ingress) configure(wt *webtransport.Server) {
 	connections := make(chan struct{}, cap(g.slots))
 	wt.H3.QUICConfig = q
 	wt.H3.MaxHeaderBytes = 16 << 10
+	wt.H3.IdleTimeout = 60 * time.Second
 	wt.H3.Logger = slog.New(slog.DiscardHandler)
 	wt.H3.ConnContext = func(ctx context.Context, c *quic.Conn) context.Context {
 		select {
@@ -83,7 +84,7 @@ func (g *ingress) configure(wt *webtransport.Server) {
 		}
 		return ctx
 	}
-	wt.Config = &webtransport.Config{MaxIncomingStreams: 1, MaxIncomingUniStreams: -1}
+	wt.Config = &webtransport.Config{MaxIncomingStreams: 1, MaxIncomingUniStreams: -1, MaxIncomingData: 64 << 10}
 }
 
 func loopbackHost(authority string) bool {
@@ -137,6 +138,14 @@ func (g *ingress) connect(wt *webtransport.Server, h *chat.Hub, local bool) http
 		}
 		closeSession := func() { _ = sess.CloseWithError(0, "closed") }
 		defer closeSession()
+		// Peers using older drafts do not negotiate per-session stream limits.
+		// Consume unexpected streams so the library cannot queue them indefinitely.
+		go func() {
+			if _, err := sess.AcceptUniStream(sess.Context()); err == nil {
+				g.failures.Add(1)
+				closeSession()
+			}
+		}()
 		ctx, cancel := context.WithTimeout(sess.Context(), 10*time.Second)
 		stream, err := sess.AcceptStream(ctx)
 		cancel()
@@ -144,6 +153,12 @@ func (g *ingress) connect(wt *webtransport.Server, h *chat.Hub, local bool) http
 			g.failures.Add(1)
 			return
 		}
+		go func() {
+			if _, err := sess.AcceptStream(sess.Context()); err == nil {
+				g.failures.Add(1)
+				closeSession()
+			}
+		}()
 		remote, err := netip.ParseAddrPort(r.RemoteAddr)
 		if err != nil {
 			g.failures.Add(1)
@@ -164,18 +179,15 @@ func (g *ingress) connect(wt *webtransport.Server, h *chat.Hub, local bool) http
 		go func() {
 			defer closeSession()
 			for {
-				select {
-				case <-p.Done():
+				data, ok := p.Next(sess.Context())
+				if !ok {
 					return
-				case <-sess.Context().Done():
+				}
+				if stream.SetWriteDeadline(time.Now().Add(15*time.Second)) != nil {
 					return
-				case data := <-p.Outbound():
-					if stream.SetWriteDeadline(time.Now().Add(15*time.Second)) != nil {
-						return
-					}
-					if _, err := stream.Write(data); err != nil {
-						return
-					}
+				}
+				if _, err := stream.Write(data); err != nil {
+					return
 				}
 			}
 		}()

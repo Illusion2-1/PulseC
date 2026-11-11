@@ -1,6 +1,11 @@
 import { limits } from "../config";
 import { normalizeHex } from "../core/colors";
-import { handle, nickPattern, tripPattern } from "../core/identity";
+import {
+  handle,
+  handlePattern,
+  nickPattern,
+  tripPattern,
+} from "../core/identity";
 import type { ModerationAction, SendKind } from "../types";
 import type { ChatClient } from "./client.svelte";
 import { resolveTarget } from "./moderation";
@@ -67,7 +72,16 @@ export const commands = {
       c.notice("whisperUsage");
       return "keep";
     }
-    return { kind: "whisper", to: match[1], text: match[2] };
+    let to = match[1];
+    if (!handlePattern.test(to)) {
+      const users = c.state.users.filter((u) => u.nick === to);
+      if (users.length !== 1) {
+        c.notice(users.length ? "ambiguous_recipient" : "recipient_required");
+        return "keep";
+      }
+      to = handle(users[0]);
+    }
+    return { kind: "whisper", to, text: match[2] };
   },
   "/topic": say("topic"),
   "/users": (c) =>

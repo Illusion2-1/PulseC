@@ -283,6 +283,10 @@ export const messages = {
     "Ambiguous recipient. Specify nick#full-trip.",
   ],
   recipient_offline: ["收件人不在线", "Recipient is offline"],
+  recipient_required: [
+    "请指定收件人的昵称#完整trip",
+    "Specify the recipient's nick#full-trip.",
+  ],
   unknown_kind: ["未知消息类型", "Unknown message type"],
   unknown_op: ["未知操作", "Unknown operation"],
   server_busy: ["中继已满，请稍后再试", "Relay at capacity. Try again later."],

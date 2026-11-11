@@ -21,6 +21,45 @@ interface Attempt {
   close?: () => void;
 }
 
+// A snapshot can contain all 4096 members. Limit each newline-delimited
+// event in wire bytes, including fragments still waiting for a newline.
+const maxEventBytes = 1 << 20;
+
+export async function* readEvents(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let text = "",
+    size = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        if (size) throw Error("Incomplete event");
+        return;
+      }
+      for (let start = 0; start < value.length;) {
+        const newline = value.indexOf(10, start);
+        const end = newline < 0 ? value.length : newline;
+        size += end - start;
+        if (size > maxEventBytes) throw Error("Event too large");
+        text += decoder.decode(value.subarray(start, end), {
+          stream: newline < 0,
+        });
+        if (newline >= 0) {
+          const event = JSON.parse(text);
+          if (typeof event?.op !== "string") throw Error("Invalid event");
+          yield event as ServerEvent;
+          text = "";
+          size = 0;
+        }
+        start = end + 1;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 // Each attempt owns its stream and timers. A retired session cannot write into its successor.
 // Failed attempts back off exponentially from 0.5 s to 15 s with ±20 % jitter.
 export const connect: Connect = ({ status, opened, received, heartbeat }) => {
@@ -77,9 +116,6 @@ export const connect: Connect = ({ status, opened, received, heartbeat }) => {
       await transport.ready;
       const stream = await transport.createBidirectionalStream();
       writer = stream.writable.getWriter();
-      const reader = stream.readable
-        .pipeThrough(new TextDecoderStream())
-        .getReader();
       clearTimeout(timeout);
       let last = Date.now();
       token.send = (cmd) =>
@@ -90,18 +126,11 @@ export const connect: Connect = ({ status, opened, received, heartbeat }) => {
         if (Date.now() - last > 45000) fail();
         else heartbeat();
       }, 10000);
-      let buf = "";
-      while (!stopped) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += value;
-        let pos;
-        while ((pos = buf.indexOf("\n")) >= 0) {
-          last = Date.now();
-          delay = 500;
-          received(JSON.parse(buf.slice(0, pos)));
-          buf = buf.slice(pos + 1);
-        }
+      for await (const event of readEvents(stream.readable)) {
+        if (stopped) break;
+        last = Date.now();
+        delay = 500;
+        received(event);
       }
     } catch {
     } finally {

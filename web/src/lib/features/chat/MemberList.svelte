@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { colorOf } from "$lib/core/colors";
-  import { clash, handle } from "$lib/core/identity";
-  import { canManage, idle as isIdle, roleOf } from "$lib/core/roster";
-  import { locale, t } from "$lib/i18n/locale.svelte";
-  import type { Member, ModerationAction } from "$lib/types";
+  import { useChat } from "#lib/chat/context.ts";
+  import { colorOf } from "#lib/core/colors.ts";
+  import { clash, handle } from "#lib/core/identity.ts";
+  import { canManage, idle as isIdle, roleOf } from "#lib/core/roster.ts";
+  import { locale, t } from "#lib/i18n/locale.svelte.ts";
+  import type { Member, ModerationAction } from "#lib/types.ts";
 
   const chat = useChat();
   const room = $derived(chat.state);

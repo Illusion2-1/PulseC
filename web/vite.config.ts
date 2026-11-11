@@ -1,8 +1,66 @@
+import { createHash } from "node:crypto";
+import { globSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { sveltekit } from "@sveltejs/kit/vite";
+import adapter from "@sveltejs/adapter-static";
+
+const root = fileURLToPath(new URL(".", import.meta.url));
+const hash = createHash("sha256");
+const files = globSync(
+  ["src/**/*.*", "*.config.js", "*.config.ts", "package-lock.json"],
+  {
+    cwd: root,
+  },
+).sort();
+for (const path of files) {
+  hash
+    .update(path)
+    .update("\0")
+    .update(readFileSync(new URL(path, import.meta.url)))
+    .update("\0");
+}
 
 export default defineConfig({
-  plugins: [sveltekit()],
+  plugins: [
+    sveltekit({
+      // Every project component uses runes; dependencies keep their own mode.
+      dynamicCompileOptions: ({ filename }) =>
+        filename.includes("/node_modules/") ? undefined : { runes: true },
+
+      adapter: adapter({ fallback: "index.html" }),
+      version: { name: hash.digest("hex").slice(0, 16) },
+      csp: {
+        mode: "hash",
+        directives: {
+          "default-src": ["self"],
+          "script-src": ["self"],
+          "style-src": ["self"],
+          // The framework adds this visually-hidden style on its route announcer.
+          "style-src-attr": [
+            "unsafe-hashes",
+            "sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo=",
+            // KaTeX's stacked braces/arrows use fixed SVG widths. Parse errors
+            // use the theme color passed to render().
+            ...[
+              "width:0.8889em",
+              "width:0.6667em",
+              "width:0.7778em",
+              "color:var(--red)",
+            ].map(
+              (style) =>
+                `sha256-${createHash("sha256").update(style).digest("base64")}` as const,
+            ),
+          ],
+          "img-src": ["self", "data:"],
+          "connect-src": ["self"],
+          "base-uri": ["none"],
+          "object-src": ["none"],
+          "form-action": ["self"],
+        },
+      },
+    }),
+  ],
   build: {
     // Even the smallest math fonts must use same-origin URLs under our CSP.
     assetsInlineLimit: (path) =>

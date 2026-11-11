@@ -58,11 +58,13 @@ func TestAddressAndTopicLimitsSurviveIdentityChanges(t *testing.T) {
 func TestAbuseRemainsBounded(t *testing.T) {
 	h := NewHub(128)
 	a := joinedPeer(t, h, "a", "a")
+	h.rooms["room"].slow = 1
 	// Invalid whisper targets must not consume a receipt or allocate trip history.
+	b := joinedPeer(t, h, "b", "b")
 	for i := 0; i < 10; i++ {
-		h.Handle(a, protocol.Command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", i), Kind: "whisper", To: "missing", Text: "x"})
+		h.Handle(b, protocol.Command{Op: "send", Room: "room", ID: fmt.Sprintf("%036d", i), Kind: "whisper", To: "missing#0123456789abcdef", Text: "x"})
 	}
-	if len(h.receipts) != 0 || len(h.limits) != 0 {
+	if len(h.receipts) != 0 || len(h.limits) != 0 || len(h.rooms["room"].recent) != 0 {
 		t.Fatal("invalid messages retained state")
 	}
 	events(t, a)
@@ -90,6 +92,20 @@ func TestAbuseRemainsBounded(t *testing.T) {
 	e := events(t, a)
 	if e[len(e)-1]["code"] != "control_limited" {
 		t.Fatal("control flood allowed")
+	}
+}
+
+func TestPeerQueueByteLimit(t *testing.T) {
+	p := NewPeer(netip.Addr{})
+	frame := make([]byte, maxQueuedBytes)
+	p.queue(frame)
+	if _, ok := p.Next(t.Context()); !ok || p.queuedBytes.Load() != 0 {
+		t.Fatal("dequeue did not release the budget")
+	}
+	p.queue(frame)
+	p.queue([]byte("x"))
+	if !p.overflow || !p.stopped || len(p.send) != 1 || p.queuedBytes.Load() != maxQueuedBytes {
+		t.Fatal("queue exceeded its byte budget")
 	}
 }
 
@@ -129,6 +145,13 @@ func FuzzUntrustedCommand(f *testing.F) {
 		h.Handle(p, c)
 		if len(h.receipts) != 0 || len(h.rooms) != 0 {
 			t.Fatal("unidentified Peer created room or sent message")
+		}
+		h.Remove(p)
+		member := joinedPeer(t, h, "member", "a")
+		h.Handle(member, c)
+		h.Remove(member)
+		if len(h.peers) != 0 || len(h.rooms) != 0 {
+			t.Fatal("disconnect left stale membership")
 		}
 	})
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { useChat } from "$lib/chat/context";
-  import { clock } from "$lib/i18n/locale.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { clock } from "#lib/i18n/locale.svelte.ts";
   import LanguagePicker from "./LanguagePicker.svelte";
 
   // The one-line header shared by the entrance and the chat screen.

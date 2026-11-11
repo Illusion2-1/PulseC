@@ -140,6 +140,29 @@ func TestModeration(t *testing.T) {
 	}
 }
 
+func TestOwnerCanRestrictModerator(t *testing.T) {
+	h := NewHub(128)
+	owner := joinedPeer(t, h, "owner", "a")
+	mod := joinedPeer(t, h, "mod", "b")
+	assign := func(action string) {
+		h.Handle(owner, protocol.Command{Op: "moderate", Room: "room", Action: action, Target: mod.trip})
+	}
+	assign("op")
+	assign("mute")
+	events(t, mod)
+	h.Handle(mod, protocol.Command{Op: "send", Kind: "chat", Room: "room", ID: fmt.Sprintf("%036d", 1), Text: "hello"})
+	if got := events(t, mod); len(got) != 1 || got[0]["code"] != "room_muted" {
+		t.Fatal("mute ineffective", got)
+	}
+	assign("op")
+	assign("ban")
+	events(t, mod)
+	h.Handle(mod, protocol.Command{Op: "join", Room: "room"})
+	if got := events(t, mod); len(got) != 1 || got[0]["code"] != "room_banned" || mod.rooms["room"] {
+		t.Fatal("ban ineffective", got)
+	}
+}
+
 func TestColor(t *testing.T) {
 	h := NewHub(128)
 	join := func(cred, color string) *Peer {

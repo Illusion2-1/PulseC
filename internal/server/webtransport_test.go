@@ -48,8 +48,8 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- wtServer.Serve(listener) }()
 	t.Cleanup(func() { _ = wtServer.Close(); _ = listener.Close(); <-done })
-	dial := func() (*wt.Stream, *wt.Session) {
-		tr := &wt.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
+	dial := func(cfg *wt.Config) (*wt.Stream, *wt.Session) {
+		tr := &wt.Transport{Config: cfg, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
 		t.Cleanup(func() { _ = tr.Close() })
 		ctx, cancel := context.WithTimeout(t.Context(), 4*time.Second)
 		defer cancel()
@@ -66,7 +66,7 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 		}
 		return stream, sess
 	}
-	healthy, _ := dial()
+	healthy, _ := dial(&wt.Config{MaxIncomingData: 64 << 10})
 	reader := bufio.NewReader(healthy)
 	// Send a ping to materialise the healthy bidirectional stream on the server.
 	first := true
@@ -89,7 +89,7 @@ func TestRejectBadFramesOverWebTransport(t *testing.T) {
 	}
 	ping()
 	for _, frame := range [][]byte{bytes.Repeat([]byte("x"), 32768), []byte("{broken}"), []byte("{\"op\":\"ping\",\"id\":\"\xff\"}")} {
-		stream, sess := dial()
+		stream, sess := dial(nil)
 		if _, err := stream.Write(append(frame, []byte("\n{\"op\":\"ping\"}\n")...)); err != nil {
 			t.Fatal(err)
 		}

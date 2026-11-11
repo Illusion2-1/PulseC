@@ -1,10 +1,12 @@
 package chat
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/netip"
 	"regexp"
+	"sync/atomic"
 	"time"
 
 	"pulsec/internal/protocol"
@@ -20,6 +22,7 @@ type Peer struct {
 	rosterDelta   bool
 	rooms         map[string]bool
 	send          chan []byte
+	queuedBytes   atomic.Int64
 	stop          chan struct{}
 	stopped       bool
 	overflow      bool
@@ -32,10 +35,17 @@ func NewPeer(source netip.Addr) *Peer {
 	return &Peer{source: source.Unmap(), rooms: make(map[string]bool), send: make(chan []byte, 64), stop: make(chan struct{})}
 }
 
-// Outbound frames may be shared by multiple peers and must only be read.
-func (p *Peer) Outbound() <-chan []byte { return p.send }
-
-func (p *Peer) Done() <-chan struct{} { return p.stop }
+// Next returns a read-only frame for the single stream writer.
+func (p *Peer) Next(ctx context.Context) ([]byte, bool) {
+	select {
+	case b := <-p.send:
+		p.queuedBytes.Add(-int64(len(b)))
+		return b, true
+	case <-p.stop:
+	case <-ctx.Done():
+	}
+	return nil, false
+}
 
 func (p *Peer) reject(c protocol.Command, problem protocol.Problem) {
 	p.queue(protocol.Reject(c, problem))
@@ -57,13 +67,25 @@ func (p *Peer) close() {
 	}
 }
 
+// Even a full 4096-member roster fits in one frame. Cap the total as
+// well as the frame count so a stalled writer cannot retain 64 snapshots.
+const maxQueuedBytes = 1 << 20
+
 func (p *Peer) queue(b []byte) {
-	select {
-	case p.send <- b:
-	default:
-		p.overflow = true
-		p.close()
+	if p.stopped {
+		return
 	}
+	size := int64(len(b))
+	if p.queuedBytes.Add(size) <= maxQueuedBytes {
+		select {
+		case p.send <- b:
+			return
+		default:
+		}
+	}
+	p.queuedBytes.Add(-size)
+	p.overflow = true
+	p.close()
 }
 
 func (p *Peer) member() protocol.Member {

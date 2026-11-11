@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { lanePath, type Lanes } from "$lib/core/timeline";
+  import { useChat } from "#lib/chat/context.ts";
+  import { lanePath, type Lanes } from "#lib/core/timeline.ts";
 
   let { layout }: { layout: Lanes } = $props();
   const chat = useChat();

@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { limits, storageKeys } from "../config";
-import { handle, roomPattern } from "../core/identity";
+import { handle, handlePattern, roomPattern } from "../core/identity";
 import { isAdmin } from "../core/roster";
 import { mentions } from "../core/text";
 import { t } from "../i18n/locale.svelte";
@@ -384,9 +384,17 @@ export class ChatClient {
       !this.identity?.trip
     )
       return;
-    if (deliveryUnknown(m, this.boot, now)) {
+    // Older tabs could persist a nickname without the recipient's identity.
+    const unboundWhisper = m.kind === "whisper" && !handlePattern.test(m.to);
+    if (deliveryUnknown(m, this.boot, now) || (unboundWhisper && m.attempt)) {
       this.outbox.remove(m.id);
       this.notice("uncertain", m.room, { params: { raw: m.raw } });
+      this.save();
+      return;
+    }
+    if (unboundWhisper) {
+      this.outbox.remove(m.id);
+      this.notice("recipient_required", m.room, { unsent: m.raw, warn: true });
       this.save();
       return;
     }

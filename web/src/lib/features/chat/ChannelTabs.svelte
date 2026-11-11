@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { t } from "$lib/i18n/locale.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
 
   const chat = useChat();
 </script>

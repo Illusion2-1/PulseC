@@ -43,15 +43,16 @@ func TestSharedBroadcast(t *testing.T) {
 	if !peers[0].overflow || !peers[0].stopped {
 		t.Fatal("full queue did not retire")
 	}
-	first := <-peers[1].send
+	first, _ := peers[1].Next(t.Context())
 	for _, p := range peers[2:] {
-		frame := <-p.send
+		frame, _ := p.Next(t.Context())
 		if &frame[0] != &first[0] {
 			t.Fatal("one broadcast allocated per-recipient frames")
 		}
 	}
 	broadcastChat(room, "second")
-	if !bytes.Contains(first, []byte("first")) || !bytes.Contains(<-peers[1].send, []byte("second")) {
+	second, _ := peers[1].Next(t.Context())
+	if !bytes.Contains(first, []byte("first")) || !bytes.Contains(second, []byte("second")) {
 		t.Fatal("later broadcast lost or overwrote in-flight data")
 	}
 }
@@ -66,7 +67,7 @@ func BenchmarkBroadcast(b *testing.B) {
 			for b.Loop() {
 				broadcastChat(room, text)
 				for _, p := range peers {
-					<-p.send
+					p.Next(b.Context())
 				}
 			}
 		})

@@ -2,11 +2,11 @@
   import { onMount } from "svelte";
   import { afterNavigate, replaceState } from "$app/navigation";
   import { page } from "$app/state";
-  import { browserDeps, ChatClient } from "$lib/chat/client.svelte";
-  import { provideChat } from "$lib/chat/context";
-  import ChatView from "$lib/features/chat/ChatView.svelte";
-  import Entrance from "$lib/features/entrance/Entrance.svelte";
-  import { locale, t } from "$lib/i18n/locale.svelte";
+  import { browserDeps, ChatClient } from "#lib/chat/client.svelte.ts";
+  import { provideChat } from "#lib/chat/context.ts";
+  import ChatView from "#lib/features/chat/ChatView.svelte";
+  import Entrance from "#lib/features/entrance/Entrance.svelte";
+  import { locale, t } from "#lib/i18n/locale.svelte.ts";
 
   const chat = provideChat(new ChatClient(browserDeps()));
   locale.load();

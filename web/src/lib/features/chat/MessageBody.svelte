@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { parse } from "$lib/core/markup";
+  import { parse } from "#lib/core/markup.ts";
   import CodeBlock from "./CodeBlock.svelte";
   import Formula from "./Formula.svelte";
 

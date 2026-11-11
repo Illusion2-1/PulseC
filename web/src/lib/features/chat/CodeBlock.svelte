@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { Root, RootContent } from "hast";
-  import { t } from "$lib/i18n/locale.svelte";
+  import { t } from "#lib/i18n/locale.svelte.ts";
 
   let { lang, lines }: { lang: string; lines: string[] } = $props();
   const code = $derived(lines.join("\n"));
   const numbers = $derived(lines.map((_, i) => i + 1).join("\n"));
   async function highlight(lang: string, code: string) {
-    const syntax = await import("$lib/core/highlight");
+    const syntax = await import("#lib/core/highlight.ts");
     return syntax.highlight(lang, code);
   }
   const highlighted = $derived(highlight(lang, code).catch(() => undefined));

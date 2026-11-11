@@ -186,6 +186,33 @@ test("commands keep a draft that needs correcting", () => {
   assert.equal(client.composer.draft, "");
 });
 
+test("a queued whisper stays bound to the identity selected before reconnect", () => {
+  const { client, relay } = chat();
+  const target = member(2, "neo", trip("b"));
+  relay.emit(snapshot("lobby", [target]));
+  say(client, "/w neo private");
+  relay.drop();
+  relay.connect();
+  relay.emit(snapshot("lobby", [member(3, "neo", trip("c"))]));
+  assert.deepEqual(
+    relay.ops("send").map((m) => m.to),
+    Array(2).fill("neo#" + target.trip),
+  );
+});
+
+test("a legacy nickname-only whisper stays recoverable without being transmitted", () => {
+  const { client, relay } = chat();
+  say(client, "/w neo#" + trip("b") + " private");
+  relay.drop();
+  client.outbox.queue[0].to = "neo";
+  delete client.outbox.queue[0].attempt;
+  relay.connect();
+  relay.emit(snapshot("lobby", [member(3, "neo", trip("c"))]));
+  assert.equal(relay.ops("send").length, 1);
+  assert.equal(last(client).code, "recipient_required");
+  assert.ok(last(client).unsent);
+});
+
 test("command parsing leaves // and plain text alone", () => {
   assert.deepEqual(parseCommand("/join  #x"), { name: "/join", arg: "#x" });
   assert.deepEqual(parseCommand("/me\nwaves"), { name: "/me", arg: "waves" });

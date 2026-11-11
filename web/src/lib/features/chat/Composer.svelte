@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { limits } from "$lib/config";
-  import { colorOf } from "$lib/core/colors";
-  import { t } from "$lib/i18n/locale.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { limits } from "#lib/config.ts";
+  import { colorOf } from "#lib/core/colors.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
 
   const chat = useChat();
   const composer = chat.composer;

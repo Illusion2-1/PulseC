@@ -18,6 +18,7 @@ var (
 	TopicTooLong       = Problem{"topic_too_long", "主题最长 120 字"}
 	TopicLimited       = Problem{"control_limited", "主题修改过于频繁，请稍后再试"}
 	AmbiguousRecipient = Problem{"ambiguous_recipient", "收件人有重名，请指定 昵称#完整trip"}
+	RecipientRequired  = Problem{"recipient_required", "请指定收件人的昵称#完整trip"}
 	RecipientOffline   = Problem{"recipient_offline", "收件人不在线"}
 	UnknownKind        = Problem{"unknown_kind", "未知消息类型"}
 	UnknownOp          = Problem{"unknown_op", "未知操作"}

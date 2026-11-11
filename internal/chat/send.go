@@ -115,6 +115,10 @@ func (r *channel) slowWait(trip string, now time.Time) time.Duration {
 	for len(sent) > 0 && now.Sub(sent[0]) >= 10*time.Second {
 		sent = sent[1:]
 	}
+	if len(sent) == 0 {
+		delete(r.recent, trip)
+		return 0
+	}
 	r.recent[trip] = sent
 	if len(sent) < r.slow {
 		return 0
@@ -123,9 +127,14 @@ func (r *channel) slowWait(trip string, now time.Time) time.Duration {
 }
 
 func (r *channel) whisper(p *Peer, c protocol.Command, ref string, now time.Time) bool {
+	nick, trip, ok := strings.Cut(c.To, "#")
+	if !ok || !nickOK.MatchString(nick) || !tripOK.MatchString(trip) {
+		p.reject(c, protocol.RecipientRequired)
+		return false
+	}
 	var target *Peer
 	for u := range r.members {
-		if u.nick == c.To || u.nick+"#"+u.trip == c.To {
+		if u.nick == nick && u.trip == trip {
 			if target != nil {
 				p.reject(c, protocol.AmbiguousRecipient)
 				return false

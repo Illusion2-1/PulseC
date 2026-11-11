@@ -1,12 +1,17 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { colorOf } from "$lib/core/colors";
-  import { clash, handle } from "$lib/core/identity";
-  import { mentions } from "$lib/core/text";
-  import { quoteLanes, sameDay, threads, type Shape } from "$lib/core/timeline";
-  import { clock, date, t } from "$lib/i18n/locale.svelte";
-  import { displayEvent, isWarning } from "$lib/i18n/translate";
-  import type { LogEntry } from "$lib/types";
+  import { useChat } from "#lib/chat/context.ts";
+  import { colorOf } from "#lib/core/colors.ts";
+  import { clash, handle } from "#lib/core/identity.ts";
+  import { mentions } from "#lib/core/text.ts";
+  import {
+    quoteLanes,
+    sameDay,
+    threads,
+    type Shape,
+  } from "#lib/core/timeline.ts";
+  import { clock, date, t } from "#lib/i18n/locale.svelte.ts";
+  import { displayEvent, isWarning } from "#lib/i18n/translate.ts";
+  import type { LogEntry } from "#lib/types.ts";
   import MessageBody from "./MessageBody.svelte";
   import QuoteLinks from "./QuoteLinks.svelte";
 

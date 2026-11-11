@@ -1,8 +1,9 @@
 .PHONY: build frontend install-web web-check go-check smoke test check tools security
 export PATH := $(CURDIR)/dist/tools:$(PATH)
 GOVULNDB ?= https://vuln.go.dev
-VERSION ?= $(shell sh scripts/version.sh)
-GO_BUILD = CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$(VERSION)"
+override VERSION := $(value VERSION)
+export VERSION
+GO_BUILD = version=$$(sh scripts/version.sh) && CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=$$version"
 
 build: frontend
 	$(GO_BUILD) -o dist/pulsec .

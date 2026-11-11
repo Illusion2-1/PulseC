@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { defaultColor } from "$lib/core/colors";
+  import { useChat } from "#lib/chat/context.ts";
+  import { defaultColor } from "#lib/core/colors.ts";
   import {
     deriveProof,
     nickPattern,
     randomProof,
     roomPattern,
     tripOf,
-  } from "$lib/core/identity";
-  import { t } from "$lib/i18n/locale.svelte";
-  import { displayEvent } from "$lib/i18n/translate";
-  import TopBar from "$lib/ui/TopBar.svelte";
+  } from "#lib/core/identity.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
+  import { displayEvent } from "#lib/i18n/translate.ts";
+  import TopBar from "#lib/ui/TopBar.svelte";
   import RoomDirectory from "./RoomDirectory.svelte";
 
   const chat = useChat();

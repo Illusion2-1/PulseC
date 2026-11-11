@@ -11,13 +11,17 @@
 <span class="formula" class:display
   >{#await renderer}{source}{:then [katex]}<span
       {@attach (node) => {
-        katex.render(source.slice(inset, -inset), node, {
-          displayMode: display,
-          throwOnError: false,
-          errorColor: "var(--red)",
-          maxSize: 20,
-          trust: false,
-        });
+        try {
+          katex.render(source.slice(inset, -inset), node, {
+            displayMode: display,
+            throwOnError: false,
+            errorColor: "var(--red)",
+            maxSize: 20,
+            trust: false,
+          });
+        } catch {
+          node.textContent = source;
+        }
       }}
     ></span>{:catch}{source}{/await}</span
 >

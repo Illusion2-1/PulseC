@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { useChat } from "$lib/chat/context";
-  import { t } from "$lib/i18n/locale.svelte";
-  import type { DirectoryRoom } from "$lib/types";
-  import PulseChart from "$lib/ui/PulseChart.svelte";
+  import { useChat } from "#lib/chat/context.ts";
+  import { t } from "#lib/i18n/locale.svelte.ts";
+  import type { DirectoryRoom } from "#lib/types.ts";
+  import PulseChart from "#lib/ui/PulseChart.svelte";
 
   let {
     target,

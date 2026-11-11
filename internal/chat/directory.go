@@ -8,7 +8,7 @@ import (
 )
 
 func (h *Hub) directory(p *Peer, c protocol.Command, now time.Time) {
-	if len(c.Known) > 50 {
+	if len(c.Known) > protocol.MaxKnownRooms {
 		p.reject(c, protocol.TooManyKnown)
 		return
 	}

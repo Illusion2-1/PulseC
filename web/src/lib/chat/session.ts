@@ -23,9 +23,17 @@ const isObject = (x: unknown): x is Record<string, unknown> =>
 const isOutgoing = (q: unknown, rooms: Set<string>): q is Outgoing =>
   isObject(q) &&
   q.op === "send" &&
+  (q.kind === "chat" ||
+    q.kind === "me" ||
+    q.kind === "topic" ||
+    q.kind === "whisper") &&
   typeof q.room === "string" &&
   rooms.has(q.room) &&
   typeof q.id === "string" &&
+  typeof q.to === "string" &&
+  typeof q.nick === "string" &&
+  typeof q.created === "number" &&
+  Number.isFinite(q.created) &&
   typeof q.raw === "string" &&
   typeof q.text === "string";
 
@@ -41,7 +49,9 @@ export function restoreSession(input: unknown): SavedSession {
     current: "",
     queue: [],
     ignored: Array.isArray(saved.ignored)
-      ? saved.ignored.filter((trip) => tripPattern.test(trip))
+      ? saved.ignored
+          .filter((trip) => typeof trip === "string" && tripPattern.test(trip))
+          .slice(0, limits.ignored)
       : [],
   };
   const id = saved.identity;

@@ -8,6 +8,7 @@ unset VERSION
 cd "$work"
 test "$(sh "$script")" = dev
 test "$(VERSION=custom sh "$script")" = custom
+if VERSION='invalid version' sh "$script" >/dev/null 2>&1; then exit 1; fi
 
 git init -q
 git config user.name 'Version Test'
@@ -22,5 +23,8 @@ test "$(sh "$script")" = "v1.0.0-$second"
 git tag v1.1.0
 test "$(sh "$script")" = "v1.1.0-$second"
 test "$(sh "$script" HEAD~1)" = "v1.0.0-$first"
+git -c commit.gpgsign=false commit -q --allow-empty -m third
+git tag 'release/test'
+if sh "$script" >/dev/null 2>&1; then exit 1; fi
 test "$(VERSION=custom sh "$script")" = custom
 printf 'Version checks passed\n'
