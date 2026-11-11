@@ -1,4 +1,4 @@
-// Client-side limits. Most mirror relay limits (docs/protocol.md); the client
+// Client-side limits. Most mirror relay limits; the client
 // enforces them early so a user sees a local notice instead of a relay error.
 export const limits = {
   /** Channels one connection may join (relay: room_limit). */

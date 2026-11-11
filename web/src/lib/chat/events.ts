@@ -29,7 +29,7 @@ function presence(c: ChatClient, e: EventOf<"member"> | EventOf<"notice">) {
 
 const rejected = (e: { text?: string }) => e.text || t("rejected");
 
-// One handler per relay event (docs/protocol.md). Unknown events are ignored.
+// One handler per relay event. Unknown events are ignored.
 const handlers: Handlers = {
   connection(c, e) {
     c.connection = { transport: e.transport, encryption: e.encryption };

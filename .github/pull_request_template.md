@@ -1,7 +1,7 @@
-## 行为变化
+## What changed? / 改了什么？
 
-说明用户或运营者遇到的问题，以及此改动后的行为。
+<!-- Describe the problem and what people will see after this change. 请说明原来遇到的问题，以及改动后的效果。 -->
 
-## 验证
+## How was it tested? / 如何验证？
 
-列出执行的检查、可复现的测试步骤及尚未验证的范围。涉及协议、隐私、依赖或广播性能时，说明兼容性和相关验证结果。
+<!-- List the commands or steps you tried and anything still unverified. 请列出运行过的命令或操作步骤，以及仍待验证的部分。 -->

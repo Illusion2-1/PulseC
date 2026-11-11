@@ -1,7 +1,13 @@
-# 安全报告与响应
+# Reporting a security issue
 
-请通过仓库托管方提供的私有漏洞报告入口联系维护者。如果该入口尚未启用，先向实际部署方索取私密联系方式。初次报告请写明受影响的版本或二进制摘要、攻击者需要满足的条件、预期和实际行为，以及使用合成数据的最小复现。不要把可重用的 proof、trip 密码、证书私钥、IP 或真实消息放入公开 issue、追踪日志或附件。
+**English** · [简体中文](#报告安全问题)
 
-维护者按影响与可达性分级，确认版本和修复负责人；以测试复现、修复、复扫及发布记录关闭问题。可能泄露正文或凭据、私聊误投、越权访问，以及可达的高危与严重问题阻止发布。延期项要说明使用范围、缓解方案、负责人和复核时点。
+Use GitHub's private vulnerability reporting option for this repository. If it is unavailable, ask the operator of your PulseC instance for a private contact. Include the affected version, the conditions needed to trigger the issue, what you expected, and what happened. Use synthetic chat messages in examples. Keep credentials, private keys, IP addresses, and real conversations out of public issues and attachments.
 
-运行 `make security` 检查依赖及 Git 历史中的凭据，运行 `make check` 执行 Go 静态安全检查。
+Maintainers hold a release for issues that could expose messages or credentials, deliver a private message to the wrong person, allow unauthorized access, or expose users to a high or critical vulnerability. For deferred fixes, record the affected scope, mitigation, owner, and review date.
+
+## 报告安全问题
+
+请通过本仓库的 GitHub 私密漏洞报告入口联系维护者。如果入口尚未启用，请向你所使用的 PulseC 站点运营者索取私下联系方式。报告中请注明受影响的版本、触发条件、预期结果和实际现象。示例请使用虚构的聊天内容。请勿在公开 issue 或附件中披露凭据、私钥、IP 地址或真实对话。
+
+如果问题可能导致消息或凭据泄露、私聊发错人、越权访问，或用户可能遇到高危或严重漏洞，维护者会暂停发布。延期修复时应记录影响范围、缓解措施、负责人和复核时间。
