@@ -206,7 +206,7 @@
   stroke-linecap: square;
 }
 
-/* 高亮：只在悬停左栏时出现。悬停树顶亮整棵树 */
+/* 悬停或聚焦消息行时高亮该行，树顶行则高亮整棵树 */
 .ln.who {
   background: color-mix(in srgb, var(--who) 10%, transparent);
 }

@@ -26,8 +26,7 @@
   // the message itself. Rows written by a person also carry a faint stripe.
   const roster = $derived(new Map(users.map((u) => [handle(u), u])));
 
-  // Hovering the left part of a row lights that row; on a tree's first row it
-  // lights the whole tree.
+  // Hover or focus on a tree's first row lights the whole tree.
   let hot: { m: LogEntry; tree: boolean } | null = $state.raw(null);
   const lit = (m: LogEntry, shape: Shape) =>
     !!hot && (hot.m === m || (hot.tree && hot.m === shape.root));
@@ -65,6 +64,7 @@
           count: chat.unreadCount,
         })}
       </div>{/if}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       id={m.ref ? "m-" + m.ref : undefined}
       class="ln"
@@ -82,15 +82,12 @@
       class:lit={lit(m, shape)}
       class:men={pinged(m)}
       class:self={own(m)}
+      onmouseenter={() => (hot = { m, tree: !shape.leaf })}
+      onmouseleave={() => (hot = null)}
+      onfocusin={() => (hot = { m, tree: !shape.leaf })}
+      onfocusout={() => (hot = null)}
     >
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="lf"
-        onmouseenter={() => (hot = { m, tree: !shape.leaf })}
-        onmouseleave={() => (hot = null)}
-        onfocusin={() => (hot = { m, tree: !shape.leaf })}
-        onfocusout={() => (hot = null)}
-      >
+      <div class="lf">
         <button
           class="tm"
           disabled={!m.ref}
