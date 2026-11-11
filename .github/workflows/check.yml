@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.10'
+          go-version-file: go.mod
       - name: Validate Compose profiles
         run: |
           docker compose config -q
@@ -37,6 +37,8 @@ jobs:
           sh -n deploy/certbot.sh
           PULSEC_BEHIND_PROXY=true docker compose -f compose.yaml -f compose.local.yaml config --format json |
             jq -e '.services | keys == ["pulsec"] and (.pulsec.command | index("-behind-proxy=true") != null)'
+      - name: Verify automatic tagging
+        run: sh scripts/tag_test.sh
       - run: make tools
       - run: make check security
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -64,3 +66,26 @@ jobs:
         run: |
           GOBIN="$RUNNER_TEMP" go install github.com/caddyserver/caddy/v2/cmd/caddy@9ea3108377d2abec102866808133c40ac9582162
           CADDY_BIN="$RUNNER_TEMP/caddy" PULSEC_BIN="$PWD/dist/pulsec" bash qa/caddy.sh
+  tag:
+    name: Tag main release
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create next patch tag
+        id: tag
+        run: |
+          version=$(python3 scripts/tag.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  dockerhub:
+    needs: [verify, tag]
+    uses: ./.github/workflows/dockerhub.yml
+    with:
+      version: ${{ needs.tag.outputs.version }}
+    secrets:
+      DCKR_PAT: ${{ secrets.DCKR_PAT }}

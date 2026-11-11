@@ -1,7 +1,13 @@
 name: Docker Hub
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      DCKR_PAT:
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -17,9 +23,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Resolve binary version
+      - name: Resolve image version
         id: version
-        run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+        run: echo "version=$RELEASE_TAG-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
       - name: Image tags and labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
@@ -27,7 +35,7 @@ jobs:
           images: illusionn21/pulsec
           tags: |
             type=raw,value=latest
-            type=sha,format=long
+            type=raw,value=${{ steps.version.outputs.version }}
       - name: Log in to Docker Hub
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
