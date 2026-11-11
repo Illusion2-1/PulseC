@@ -61,6 +61,39 @@ async function drained(p) {
 async function sees(p, text) {
   await messages(p).filter({hasText: text}).first().waitFor();
 }
+async function checkRoomLinks() {
+  const host = await browser.newPage(), guest = await browser.newPage();
+  const entrance = origin(base) + "/?lang=en";
+  await host.goto(entrance);
+  await host.locator("#ch").fill("讨论组");
+  await host.locator("form .go").click();
+  await host.locator(".u.me").waitFor();
+  const invite = host.url();
+  assert.equal(new URL(invite).searchParams.get("ch"), "讨论组");
+  assert.equal(new URL(invite).searchParams.get("lang"), "en");
+
+  await guest.goto(invite);
+  assert.equal(await guest.locator("#ch").inputValue(), "讨论组");
+  await guest.locator("#nick").fill("Guest");
+  await guest.locator("form .go").click();
+  await host.locator('.u[title^="Guest#"]').waitFor();
+
+  await send(host, "/join second");
+  await host.locator(".u.me").waitFor();
+  const second = host.url();
+  assert.equal(new URL(second).searchParams.get("ch"), "second");
+  await guest.goto(second);
+  await host.locator('.u[title^="Guest#"]').waitFor();
+  await guest.locator(".tab").filter({hasText: "讨论组"}).click();
+  assert.equal(guest.url(), invite);
+  await send(guest, "/leave");
+  assert.equal(guest.url(), second);
+  await send(guest, "/leave");
+  await guest.locator("form .go").waitFor();
+  assert.equal(guest.url(), entrance);
+  await guest.close();
+  await host.close();
+}
 async function checkMessageSelection(p) {
   await p.bringToFront();
   const rows = p.locator(".ln.who").filter({hasText: /private-probe|public-barrier/});
@@ -135,6 +168,10 @@ try {
   await ready(blocked, base + 2);
   browser = await chromium.launch({ channel: "chrome", executablePath: process.env.CHROME_BIN,
     args: ["--no-proxy-server"], headless: true });
+  if (!process.env.QA_LEGACY_UI) {
+    await checkRoomLinks();
+    console.log("PASS address-bar invites for new and signed-in visitors, switching and leaving rooms");
+  }
   const alice = await page("Alice");
   await alice.locator(".head").getByText("WebTransport · TLS 1.3", {exact: true}).waitFor();
   const bob = await page("Bob", "zh-CN", base + 1, 360);

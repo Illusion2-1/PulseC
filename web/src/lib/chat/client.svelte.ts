@@ -38,7 +38,7 @@ export interface ChatDeps {
   session: Store;
   local: Store;
   confirm(message: string): boolean;
-  /** Reloads the page, keeping the URL. */
+  /** Returns to the entrance after leaving the last channel. */
   reload(): void;
   /** Reloads the page without the query string. */
   restart(): void;
@@ -49,7 +49,11 @@ export const browserDeps = (): ChatDeps => ({
   session: webStore("sessionStorage"),
   local: webStore("localStorage"),
   confirm: (message) => window.confirm(message),
-  reload: () => location.reload(),
+  reload: () => {
+    const url = new URL(location.href);
+    url.searchParams.delete("ch");
+    location.replace(url);
+  },
   restart: () => location.replace(location.pathname),
 });
 

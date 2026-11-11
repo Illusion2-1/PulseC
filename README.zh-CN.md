@@ -37,7 +37,7 @@ docker compose -f compose.yaml -f compose.local.yaml up -d --no-build
 docker compose -f compose.yaml -f compose.direct.yaml up -d --no-build
 ```
 
-证书就绪后，把频道链接发给队友即可，例如 `https://chat.example.org/?ch=ctf-lab`。
+证书就绪后，创建或进入频道，复制浏览器地址栏里的链接发给队友即可，例如 `https://chat.example.org/?ch=ctf-lab`。切换频道时，地址栏也会更新。
 
 如果这台主机已经在运行支持 WebTransport 反代的 Caddy，可在 `.env` 中设置 `PULSEC_BEHIND_PROXY=true`，运行上面的本机试聊命令，再按 [Caddyfile 示例](deploy/Caddyfile) 配置站点。
 

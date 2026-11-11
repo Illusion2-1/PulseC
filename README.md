@@ -37,7 +37,7 @@ Point your domain at a Linux server and open TCP ports 80 and 443 and UDP port 4
 docker compose -f compose.yaml -f compose.direct.yaml up -d --no-build
 ```
 
-When the certificate is ready, invite people to a channel by sharing a link like `https://chat.example.org/?ch=ctf-lab`.
+When the certificate is ready, create or join a channel and copy the link from your address bar to invite others, for example `https://chat.example.org/?ch=ctf-lab`. The address updates when you switch channels.
 
 Already running Caddy on the host? With a Caddy build that supports WebTransport proxying, set `PULSEC_BEHIND_PROXY=true` in `.env`, run the local Compose command above, and follow the [Caddyfile example](deploy/Caddyfile).
 
