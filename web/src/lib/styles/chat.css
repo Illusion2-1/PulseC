@@ -217,8 +217,12 @@
   stroke-width: 1px;
   stroke-linecap: square;
 }
+.links path.lit {
+  stroke: color-mix(in srgb, var(--amber) 65%, white);
+  stroke-width: 2px;
+}
 
-/* 悬停或聚焦消息行时高亮该行，树顶行则高亮整棵树 */
+/* 悬停或聚焦时高亮该行及其直接引用的两端；树顶行也高亮整棵树 */
 .ln.who {
   background: color-mix(in srgb, var(--who) 10%, transparent);
 }

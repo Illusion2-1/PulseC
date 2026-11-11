@@ -81,7 +81,31 @@ test("quote lanes connect quoted and quoting rows", () => {
     { row: 2, lane: 1, over: [0] },
     { row: 3, lane: 1, over: [] },
   ]);
+  assert.deepEqual(layout.neighbors[0], new Set([2, 3]));
+  assert.deepEqual(layout.neighbors[2], new Set([0]));
+  assert.deepEqual(layout.neighbors[3], new Set([0, 1]));
+  const geometry = {
+    x: (lane: number) => 20 - lane * 10,
+    tip: 30,
+    y: (row: number) => row * 20,
+    hop: 3,
+  };
+  assert.equal(
+    lanePath(layout, geometry, 2),
+    "M10 0V40M10 0H30M10 40H17A3 3 0 0 1 23 40H30",
+    "the hovered reply keeps the crossing and stops before its sibling",
+  );
+  assert.equal(
+    lanePath(layout, geometry, 1),
+    "M20 20V60M20 20H30M20 60H30",
+    "the hovered source lights only its part of the shared branch",
+  );
   const one = quoteLanes(items, 1);
+  assert.deepEqual(
+    one.neighbors,
+    layout.neighbors,
+    "lane cap only limits drawing",
+  );
   assert.deepEqual(
     one.links,
     [{ from: 1, to: [3], lane: 0 }],

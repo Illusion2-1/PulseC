@@ -64,6 +64,8 @@ export interface Branch {
 
 export interface Lanes {
   links: Link[];
+  /** Direct quote partners by row, including links outside the gutter. */
+  neighbors: Set<number>[];
   /** One per row with a joint, in row order. */
   branches: Branch[];
   /** Lanes in use, for the gutter width. */
@@ -97,7 +99,12 @@ export function quoteLanes(items: LogEntry[], max = 6): Lanes {
   // them, otherwise their ends would touch and read as one line.
   const taken: [number, number][][] = Array.from({ length: max }, () => []);
   const links: Link[] = [];
+  const neighbors: Set<number>[] = [];
   for (const s of spans) {
+    for (const row of s.to) {
+      (neighbors[s.from] ??= new Set()).add(row);
+      (neighbors[row] ??= new Set()).add(s.from);
+    }
     const lane = taken.findIndex((used) =>
       used.every(([a, b]) => b < s.from || a > end(s)),
     );
@@ -129,7 +136,7 @@ export function quoteLanes(items: LogEntry[], max = 6): Lanes {
       return { row, lane, over };
     });
   const lanes = Math.max(0, ...links.map((l) => l.lane + 1));
-  return { links, branches, lanes };
+  return { links, branches, lanes, neighbors };
 }
 
 /** Pixel positions measured from the rendered log. */
@@ -144,22 +151,40 @@ export interface LaneGeometry {
   hop: number;
 }
 
-/** SVG path data: one vertical per link and one horizontal per branch. */
-export function lanePath(layout: Lanes, g: LaneGeometry) {
+/** With an active row, trace only the routes between it and its quote partners. */
+export function lanePath(
+  layout: Pick<Lanes, "links" | "branches">,
+  g: LaneGeometry,
+  activeRow?: number,
+) {
   const d: string[] = [];
+  const activeBranches = new Map<number, number>();
   for (const l of layout.links) {
+    let targets = l.to;
+    if (activeRow !== undefined && l.from !== activeRow) {
+      if (!targets.includes(activeRow)) continue;
+      targets = [activeRow];
+    }
     const top = g.y(l.from),
-      bottom = g.y(l.to.at(-1)!);
+      bottom = g.y(targets.at(-1)!);
     if (top === undefined || bottom === undefined) continue;
     d.push(`M${g.x(l.lane)} ${top}V${bottom}`);
+    if (activeRow !== undefined) {
+      for (const row of [l.from, ...targets]) {
+        activeBranches.set(row, Math.max(l.lane, activeBranches.get(row) ?? 0));
+      }
+    }
   }
   for (const b of layout.branches) {
+    const start = activeRow === undefined ? b.lane : activeBranches.get(b.row);
+    if (start === undefined) continue;
     const y = g.y(b.row);
     if (y === undefined) continue;
-    let path = `M${g.x(b.lane)} ${y}`;
+    let path = `M${g.x(start)} ${y}`;
     // A crossing is drawn as a half circle over the lane, never as a gap or
     // a plain cross, so it cannot be mistaken for a joint or a break.
     for (const lane of b.over) {
+      if (lane >= start) continue;
       const x = g.x(lane);
       path += `H${x - g.hop}A${g.hop} ${g.hop} 0 0 1 ${x + g.hop} ${y}`;
     }
