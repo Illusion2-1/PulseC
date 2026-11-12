@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" lang="en" width="536" height="94" viewBox="0 0 536 94" role="img" aria-labelledby="title">
+  <title id="title">Do not share sensitive information on a server you do not trust.</title>
+  <style>
+    rect { fill: #fff3f1; stroke: #e9aca6; }
+    text { fill: #a31d24; }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #321c1f; stroke: #78464a; }
+      text { fill: #ffaaa2; }
+    }
+  </style>
+  <rect x="1" y="1" width="534" height="92" rx="8"/>
+  <g text-anchor="middle" font-family="system-ui, sans-serif" font-size="26" font-weight="700">
+    <text x="50%" y="39">Do not share sensitive information</text>
+    <text x="50%" y="73">on a untrusted server.</text>
+  </g>
+</svg>

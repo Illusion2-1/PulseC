@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" lang="zh-CN" width="445" height="94" viewBox="0 0 445 94" role="img" aria-labelledby="title">
+  <title id="title">不要在不信任的服务器上分享敏感信息。</title>
+  <style>
+    rect { fill: #fff3f1; stroke: #e9aca6; }
+    text { fill: #a31d24; }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #321c1f; stroke: #78464a; }
+      text { fill: #ffaaa2; }
+    }
+  </style>
+  <rect x="1" y="1" width="443" height="92" rx="8"/>
+  <g text-anchor="middle" font-family="system-ui, sans-serif" font-size="29" font-weight="700">
+    <text x="50%" y="39">不要在不信任的服务器上</text>
+    <text x="50%" y="73">分享敏感信息。</text>
+  </g>
+</svg>
