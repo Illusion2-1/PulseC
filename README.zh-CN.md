@@ -55,3 +55,15 @@ docker compose -f compose.yaml -f compose.direct.yaml up -d --no-build
 如果这台主机已经在运行支持 WebTransport 反代的 Caddy，可在 `.env` 中设置 `PULSEC_BEHIND_PROXY=true`，运行上面的本机试聊命令，再按 [Caddyfile 示例](deploy/Caddyfile) 配置站点。
 
 [MIT 许可证](LICENSE)
+
+## 致谢
+
+感谢以下开源项目的维护者和贡献者。
+
+- **聊天界面与构建** — [Svelte](https://svelte.dev)、[SvelteKit](https://github.com/sveltejs/kit)、[TypeScript](https://www.typescriptlang.org/) 和 [Vite](https://vite.dev)。
+- **LaTeX 公式排版** — [KaTeX](https://katex.org)。
+- **代码语法高亮** — [lowlight](https://github.com/wooorm/lowlight) 和 [highlight.js](https://highlightjs.org/)。
+- **WebTransport、HTTP/3 与 TCP 连接数限制** — [webtransport-go](https://github.com/quic-go/webtransport-go)、[quic-go](https://github.com/quic-go/quic-go) 和 [Go netutil](https://pkg.go.dev/golang.org/x/net/netutil)。
+- **前端与浏览器测试** — [Vitest](https://vitest.dev) 和 [Playwright](https://playwright.dev)。
+
+二进制发行包中的 `THIRD-PARTY-Go.txt` 和 `THIRD-PARTY-Web.txt` 包含了第三方许可声明。

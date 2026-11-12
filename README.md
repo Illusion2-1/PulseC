@@ -55,3 +55,15 @@ When the certificate is ready, create or join a channel and copy the link from y
 Already running Caddy on the host? With a Caddy build that supports WebTransport proxying, set `PULSEC_BEHIND_PROXY=true` in `.env`, run the local Compose command above, and follow the [Caddyfile example](deploy/Caddyfile).
 
 [MIT License](LICENSE)
+
+## Credits
+
+Acknowledgments to the maintainers and contributors of the projects behind PulseC.
+
+- **Chat interface and build** — [Svelte](https://svelte.dev), [SvelteKit](https://github.com/sveltejs/kit), [TypeScript](https://www.typescriptlang.org/), and [Vite](https://vite.dev).
+- **LaTeX rendering** — [KaTeX](https://katex.org).
+- **Syntax highlighting** — [lowlight](https://github.com/wooorm/lowlight) and [highlight.js](https://highlightjs.org/).
+- **WebTransport, HTTP/3, and TCP connection limits** — [webtransport-go](https://github.com/quic-go/webtransport-go), [quic-go](https://github.com/quic-go/quic-go), and [Go netutil](https://pkg.go.dev/golang.org/x/net/netutil).
+- **Frontend and browser tests** — [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).
+
+The binary release includes third-party license notices in `THIRD-PARTY-Go.txt` and `THIRD-PARTY-Web.txt`.
