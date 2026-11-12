@@ -39,11 +39,15 @@
 .gate p {
   color: var(--fg-1);
 }
+.gate .random-channel,
 .gate .forget {
   margin-top: 12px;
   padding: 4px 0;
   color: var(--fg-1);
   text-decoration: underline;
+}
+.gate .random-channel {
+  color: var(--amber);
 }
 .gate .net-hint {
   color: var(--red);

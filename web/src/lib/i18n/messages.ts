@@ -36,6 +36,7 @@ export const messages = {
     "Channels you join will appear here.",
   ],
   join: ["接入", "Join"],
+  randomChannel: ["生成随机频道名", "Generate random channel name"],
   nick: ["昵称", "Nickname"],
   password: ["密码", "Password"],
   passwordHint: [

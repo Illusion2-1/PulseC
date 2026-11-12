@@ -97,6 +97,12 @@
     {#if chat.status === "reconnecting"}<p role="status" class="net-hint">
         {t("offlineHint")}
       </p>{/if}
+    <button
+      type="button"
+      class="random-channel"
+      onclick={() => choose("room-" + randomProof().slice(0, 16))}
+      >{t("randomChannel")}</button
+    >
     <h2>{t("join")}</h2>
     <form onsubmit={enter} autocomplete="off">
       <div class="field">
