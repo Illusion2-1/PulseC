@@ -56,11 +56,21 @@ export class ViewState {
     if (!el) return false;
     el.scrollIntoView({ block: "center" });
     this.scrolled();
-    if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
-      el.animate(
-        [{ background: "#453710" }, { background: "transparent" }],
-        900,
-      );
+    const highlight = {
+      backgroundColor: "color-mix(in srgb, var(--amber) 28%, transparent)",
+      borderLeftColor: "var(--amber)",
+    };
+    const reducedMotion = matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    el.animate(
+      [
+        highlight,
+        { ...highlight, offset: 0.75 },
+        reducedMotion ? highlight : {},
+      ],
+      4000,
+    );
     return true;
   }
 }
