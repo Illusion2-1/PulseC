@@ -1,6 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { restoreKnown, restoreSession } from "../src/lib/chat/session";
+import {
+  restoreKnown,
+  restoreLogin,
+  restoreSession,
+} from "../src/lib/chat/session";
 import { forgetChatData } from "../src/lib/platform/storage";
 import { memoryStore, trip } from "./helpers";
 
@@ -12,12 +16,32 @@ test("forget removes only this application's chat data", () => {
   });
   const local = memoryStore({
     "pulsec.channels": "x",
+    "pulsec.login": "x",
     "pulsec.language": "x",
     unrelated: "x",
   });
   forgetChatData(tab, local);
   assert.deepEqual(tab.keys(), ["unrelated"]);
   assert.deepEqual(local.keys().sort(), ["pulsec.language", "unrelated"]);
+});
+
+test("remembered login preserves passwords exactly and rejects malformed data", () => {
+  const login = { nick: "neo", password: " secret 中文 " };
+  assert.deepEqual(restoreLogin(login), login);
+  assert.deepEqual(restoreLogin({ nick: "", password: "" }), {
+    nick: "",
+    password: "",
+  });
+  for (const saved of [
+    null,
+    [],
+    { nick: 123, password: "secret" },
+    { nick: "bad name", password: "secret" },
+    { nick: "n".repeat(17), password: "secret" },
+    { nick: "neo", password: false },
+    { nick: "neo", password: "x".repeat(257) },
+  ])
+    assert.equal(restoreLogin(saved), null);
 });
 
 const identity = {

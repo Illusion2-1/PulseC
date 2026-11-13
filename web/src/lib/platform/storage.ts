@@ -39,7 +39,7 @@ export function writeJSON(store: Store, key: string, value: unknown) {
   store.set(key, JSON.stringify(value));
 }
 
-// Only PulseC's tab-scoped history/credentials and remembered channels are user data.
+// Chat data includes tab history/credentials, remembered channels and saved login.
 // Other tabs have independent sessions; the language preference belongs to the browser.
 export function forgetChatData(session: Store, local: Store) {
   for (const key of session.keys()) {
@@ -48,4 +48,5 @@ export function forgetChatData(session: Store, local: Store) {
     }
   }
   local.remove(storageKeys.channels);
+  local.remove(storageKeys.login);
 }

@@ -20,6 +20,19 @@ export interface SavedSession {
 const isObject = (x: unknown): x is Record<string, unknown> =>
   typeof x === "object" && x !== null;
 
+/** The entrance's opt-in, browser-local nickname and trip password. */
+export function restoreLogin(input: unknown) {
+  if (
+    !isObject(input) ||
+    typeof input.nick !== "string" ||
+    !nickPattern.test(input.nick.trim() || "anon") ||
+    typeof input.password !== "string" ||
+    input.password.length > 256
+  )
+    return null;
+  return { nick: input.nick.trim(), password: input.password };
+}
+
 const isOutgoing = (q: unknown, rooms: Set<string>): q is Outgoing =>
   isObject(q) &&
   q.op === "send" &&

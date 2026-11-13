@@ -1,5 +1,7 @@
 <script lang="ts">
   import { useChat } from "#lib/chat/context.ts";
+  import { restoreLogin } from "#lib/chat/session.ts";
+  import { storageKeys } from "#lib/config.ts";
   import { defaultColor } from "#lib/core/colors.ts";
   import {
     deriveProof,
@@ -10,13 +12,19 @@
   } from "#lib/core/identity.ts";
   import { t } from "#lib/i18n/locale.svelte.ts";
   import { displayEvent } from "#lib/i18n/translate.ts";
+  import { readJSON, writeJSON } from "#lib/platform/storage.ts";
   import TopBar from "#lib/ui/TopBar.svelte";
   import RoomDirectory from "./RoomDirectory.svelte";
 
   const chat = useChat();
+  const savedLogin = restoreLogin(
+    readJSON(chat.deps.local, storageKeys.login, null),
+  );
   let channel = $state(new URLSearchParams(location.search).get("ch") || ""),
-    nick = $state(""),
-    password = $state(""),
+    nick = $state(savedLogin?.nick || ""),
+    password = $state(savedLogin?.password || ""),
+    remember = $state(!!savedLogin),
+    rememberError = $state(""),
     publish = $state(false),
     entering = $state(false),
     preview = $state(""),
@@ -25,6 +33,21 @@
   const target = $derived(channel.trim() || "lobby");
   const room = $derived(chat.directory.find((r) => r.name === target));
   const shown = $derived(nick.trim() || "anon");
+
+  function saveLogin() {
+    try {
+      if (remember)
+        writeJSON(chat.deps.local, storageKeys.login, { nick, password });
+      else chat.deps.local.remove(storageKeys.login);
+      rememberError = "";
+    } catch {
+      rememberError = "rememberFailed";
+    }
+  }
+
+  $effect(() => {
+    if (remember) saveLogin();
+  });
 
   // The trip preview waits for typing to pause; PBKDF2 is deliberately slow.
   let previewSeq = 0;
@@ -71,7 +94,7 @@
       chat.entryError = { code: chat.status };
       return;
     }
-    password = "";
+    if (!remember) password = "";
     chat.enter(n, proof, name, publish);
   }
 </script>
@@ -123,6 +146,19 @@
           placeholder={t("passwordHint")}
         /><span class="hint">trip {preview || "— · " + t("temporary")}</span>
       </div>
+      <label class="settings"
+        ><input
+          type="checkbox"
+          checked={remember}
+          onchange={(e) => {
+            remember = e.currentTarget.checked;
+            if (!remember) saveLogin();
+          }}
+        />{t("rememberLogin")}</label
+      >
+      {#if rememberError}<div class="err" role="status">
+          {t(rememberError)}
+        </div>{/if}
       <div class="field">
         <label for="ch">{t("channel")}</label><input
           id="ch"

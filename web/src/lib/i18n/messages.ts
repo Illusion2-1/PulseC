@@ -44,14 +44,22 @@ export const messages = {
     "Optional, for a repeatable identity",
   ],
   temporary: ["临时身份", "temporary identity"],
+  rememberLogin: [
+    "记住昵称和 trip 密码（保存在此浏览器）",
+    "Remember nickname and trip password in this browser",
+  ],
+  rememberFailed: [
+    "无法保存或清除记住的信息，请检查浏览器存储设置。",
+    "Could not save or clear the remembered login. Check your browser storage settings.",
+  ],
   publish: [
     "新建时列入公共目录（lobby 始终公开）",
     "List new channel publicly (#lobby is always public)",
   ],
   forget: ["清除本地聊天数据", "Clear local chat data"],
   forgetConfirm: [
-    "清除本标签页的身份、记录、忽略列表、待发消息和本机已知频道？此操作无法撤销。",
-    "Clear this tab’s identity, history, mute list, pending messages and this browser’s remembered channels? This cannot be undone.",
+    "清除本标签页的身份、记录、忽略列表、待发消息、本机已知频道和记住的昵称及 trip 密码？此操作无法撤销。",
+    "Clear this tab’s identity, history, mute list, pending messages, remembered channels and saved nickname and trip password? This cannot be undone.",
   ],
   forgetFailed: [
     "浏览器未允许完整清除数据。请在浏览器设置中清理。",
