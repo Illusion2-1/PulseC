@@ -1,6 +1,7 @@
 import { tick } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { limits, storageKeys } from "../config";
+import { normalizeHex } from "../core/colors";
 import { handle, handlePattern, roomPattern } from "../core/identity";
 import { isAdmin } from "../core/roster";
 import { mentions } from "../core/text";
@@ -76,6 +77,7 @@ export class ChatClient {
   /** The error shown at the entrance, where there is no channel log. */
   entryError = $state<Details | null>(null);
   identity = $state<Identity | null>(null);
+  preferredColor = $state("");
   current = $state("");
   rooms = new SvelteMap<string, Room>();
   known = $state.raw<string[]>([]);
@@ -176,6 +178,14 @@ export class ChatClient {
       readJSON(this.deps.session, storageKeys.session, {}),
     );
     this.identity = saved.identity;
+    const color = readJSON(this.deps.local, storageKeys.color, null);
+    this.preferredColor =
+      typeof color === "string"
+        ? normalizeHex(color) || ""
+        : this.identity?.color || "";
+    if (this.identity) this.identity.color = this.preferredColor;
+    if (color === null && this.preferredColor)
+      this.rememberColor(this.preferredColor);
     for (const [name, listed] of saved.rooms) this.#open(name, listed);
     this.current = saved.current;
     this.outbox.queue = saved.queue;
@@ -317,9 +327,19 @@ export class ChatClient {
   }
 
   enter(nick: string, proof: string, name: string, listed: boolean) {
-    this.identity = { nick, proof, trip: "", color: "" };
-    this.send({ op: "identity", rosterDelta: true, nick, proof });
+    const color = this.preferredColor;
+    this.identity = { nick, proof, trip: "", color };
+    this.send({ op: "identity", rosterDelta: true, nick, proof, color });
     this.join(name, listed);
+  }
+
+  rememberColor(color: string) {
+    this.preferredColor = color;
+    try {
+      writeJSON(this.deps.local, storageKeys.color, color);
+    } catch {
+      this.cacheError = "colorSaveFailed";
+    }
   }
 
   select(name: string) {

@@ -39,7 +39,7 @@ export function writeJSON(store: Store, key: string, value: unknown) {
   store.set(key, JSON.stringify(value));
 }
 
-// Chat data includes tab history/credentials, remembered channels and saved login.
+// Chat data includes tab history/credentials, channels, saved login and colour.
 // Other tabs have independent sessions; the language preference belongs to the browser.
 export function forgetChatData(session: Store, local: Store) {
   for (const key of session.keys()) {
@@ -49,4 +49,5 @@ export function forgetChatData(session: Store, local: Store) {
   }
   local.remove(storageKeys.channels);
   local.remove(storageKeys.login);
+  local.remove(storageKeys.color);
 }

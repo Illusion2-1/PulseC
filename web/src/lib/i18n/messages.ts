@@ -58,8 +58,8 @@ export const messages = {
   ],
   forget: ["清除本地聊天数据", "Clear local chat data"],
   forgetConfirm: [
-    "清除本标签页的身份、记录、忽略列表、待发消息、本机已知频道和记住的昵称及 trip 密码？此操作无法撤销。",
-    "Clear this tab’s identity, history, mute list, pending messages, remembered channels and saved nickname and trip password? This cannot be undone.",
+    "清除本标签页的身份、记录、忽略列表、待发消息、本机已知频道、记住的昵称及 trip 密码和自选颜色？此操作无法撤销。",
+    "Clear this tab’s identity, history, mute list, pending messages, remembered channels, saved nickname and trip password, and custom colour? This cannot be undone.",
   ],
   forgetFailed: [
     "浏览器未允许完整清除数据。请在浏览器设置中清理。",
@@ -214,6 +214,10 @@ export const messages = {
   cacheUnavailable: [
     "会话存储不可用，刷新可能丢失本地数据",
     "Tab storage is unavailable. Refreshing may lose local data.",
+  ],
+  colorSaveFailed: [
+    "颜色已生效，但无法保存到此浏览器。",
+    "Colour applied, but could not be saved in this browser.",
   ],
   invalidEntry: [
     "昵称限 16 字，频道限 24 字。可用字母、数字、下划线和连字符。",

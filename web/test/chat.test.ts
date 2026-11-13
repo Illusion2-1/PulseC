@@ -474,6 +474,64 @@ test("a refresh restores identity, tabs, history and the queue", () => {
   assert.deepEqual(next.client.known, ["two", "lobby"]);
 });
 
+test("confirmed colours persist across sign-ins and reset overrides an older session", () => {
+  const { client, relay, session, local } = chat();
+  say(client, "/color #F80");
+  assert.deepEqual(relay.ops("color").at(-1), {
+    op: "color",
+    color: "#ff8800",
+  });
+  assert.equal(local.get("pulsec.color"), null, "wait for confirmation");
+  relay.emit({ op: "color", color: "#ff8800" });
+  assert.equal(JSON.parse(local.get("pulsec.color")!), "#ff8800");
+
+  const next = makeClient({ local });
+  next.client.restore();
+  assert.equal(next.client.preferredColor, "#ff8800");
+  const stop = next.client.start();
+  stops.push(stop);
+  next.relay.connect();
+  next.client.enter("other", "b".repeat(64), "lobby", false);
+  assert.equal(next.client.identity?.color, "#ff8800");
+  assert.equal(next.relay.ops("identity").at(-1)?.color, "#ff8800");
+  next.relay.drop();
+  next.relay.connect();
+  assert.equal(next.relay.ops("identity").at(-1)?.color, "#ff8800");
+
+  say(next.client, "/color");
+  assert.equal(next.relay.ops("color").at(-1)?.color, "");
+  next.relay.emit({ op: "color", color: "" });
+  assert.equal(JSON.parse(local.get("pulsec.color")!), "");
+  const refreshed = makeClient({ session, local }).client;
+  refreshed.restore();
+  assert.equal(refreshed.preferredColor, "");
+  assert.equal(refreshed.identity?.color, "", "old session colour stays reset");
+});
+
+test("legacy session colour migrates; invalid events and failed storage preserve live colour", () => {
+  const { client, relay, session, local } = chat();
+  relay.emit({ op: "color", color: "#00ff00" });
+  local.remove("pulsec.color");
+  const restored = makeClient({ session, local }).client;
+  restored.restore();
+  assert.equal(restored.preferredColor, "#00ff00");
+  assert.equal(JSON.parse(local.get("pulsec.color")!), "#00ff00");
+
+  relay.emit({ op: "color", color: "invalid" });
+  assert.equal(client.preferredColor, "#00ff00");
+  assert.equal(JSON.parse(local.get("pulsec.color")!), "#00ff00");
+  local.full = true;
+  relay.emit({ op: "color", color: "#ff8800" });
+  assert.equal(client.preferredColor, "#ff8800");
+  assert.equal(client.identity?.color, "#ff8800");
+  assert.equal(client.cacheError, "colorSaveFailed");
+  local.full = false;
+  local.set("pulsec.color", JSON.stringify("not-a-colour"));
+  const fresh = makeClient({ local }).client;
+  fresh.restore();
+  assert.equal(fresh.preferredColor, "");
+});
+
 test("/forget clears chat data after confirmation", () => {
   let restarted = false;
   const { client, session, local } = chat("lobby", {

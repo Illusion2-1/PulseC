@@ -27,5 +27,6 @@ export const storageKeys = {
   rowPrefix: "pulsec.row.",
   channels: "pulsec.channels",
   login: "pulsec.login",
+  color: "pulsec.color",
   language: "pulsec.language",
 } as const;

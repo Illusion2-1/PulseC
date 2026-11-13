@@ -17,6 +17,7 @@ test("forget removes only this application's chat data", () => {
   const local = memoryStore({
     "pulsec.channels": "x",
     "pulsec.login": "x",
+    "pulsec.color": "x",
     "pulsec.language": "x",
     unrelated: "x",
   });

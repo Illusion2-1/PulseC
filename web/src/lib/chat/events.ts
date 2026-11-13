@@ -53,6 +53,7 @@ const handlers: Handlers = {
   color(c, e) {
     if (!c.identity || (e.color !== "" && !colorPattern.test(e.color))) return;
     c.identity.color = e.color;
+    c.rememberColor(e.color);
     c.save();
     c.notice(
       e.color ? "colorSet" : "colorReset",

@@ -2,7 +2,7 @@
   import { useChat } from "#lib/chat/context.ts";
   import { restoreLogin } from "#lib/chat/session.ts";
   import { storageKeys } from "#lib/config.ts";
-  import { defaultColor } from "#lib/core/colors.ts";
+  import { defaultColor, readable } from "#lib/core/colors.ts";
   import {
     deriveProof,
     nickPattern,
@@ -181,7 +181,8 @@
         disabled={entering || chat.status !== "connected"}
         ><span
           class="dim"
-          style:color={preview ? defaultColor(shown, preview) : undefined}
+          style:color={readable(chat.preferredColor) ||
+            (preview ? defaultColor(shown, preview) : undefined)}
           >{shown}#{preview.slice(0, 5) || "—"}</span
         > <span class="amb">›</span> /join #{target}</button
       >
