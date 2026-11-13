@@ -474,6 +474,49 @@ test("a refresh restores identity, tabs, history and the queue", () => {
   assert.deepEqual(next.client.known, ["two", "lobby"]);
 });
 
+test("confirmed nickname changes update only an opted-in saved login", () => {
+  const { client, relay, local } = chat();
+  const login = { nick: "me", password: " exact trip 密码 " };
+  local.set("pulsec.login", JSON.stringify(login));
+  say(client, "/nick 新昵称");
+  assert.deepEqual(relay.ops("nick").at(-1), { op: "nick", nick: "新昵称" });
+  assert.deepEqual(JSON.parse(local.get("pulsec.login")!), login);
+  relay.emit({ op: "nick", nick: "新昵称" });
+  assert.equal(client.identity?.nick, "新昵称");
+  assert.deepEqual(JSON.parse(local.get("pulsec.login")!), {
+    ...login,
+    nick: "新昵称",
+  });
+  relay.emit({ op: "nick", nick: "bad name" });
+  assert.equal(client.identity?.nick, "新昵称");
+  assert.equal(JSON.parse(local.get("pulsec.login")!).nick, "新昵称");
+
+  local.remove("pulsec.login");
+  relay.emit({ op: "nick", nick: "NotRemembered" });
+  assert.equal(client.identity?.nick, "NotRemembered");
+  assert.equal(local.get("pulsec.login"), null, "opt-out remains in effect");
+});
+
+test("damaged or unwritable saved login does not prevent a live nickname change", () => {
+  const { client, relay, session, local } = chat();
+  local.set("pulsec.login", "malformed");
+  relay.emit({ op: "nick", nick: "Changed" });
+  assert.equal(client.identity?.nick, "Changed");
+  assert.equal(local.get("pulsec.login"), "malformed");
+
+  const login = { nick: "Old", password: "secret" };
+  local.set("pulsec.login", JSON.stringify(login));
+  local.full = true;
+  relay.emit({ op: "nick", nick: "ChangedAgain" });
+  assert.equal(client.identity?.nick, "ChangedAgain");
+  assert.equal(
+    JSON.parse(session.get("pulsec.session")!).identity.nick,
+    "ChangedAgain",
+  );
+  assert.deepEqual(JSON.parse(local.get("pulsec.login")!), login);
+  assert.equal(client.cacheError, "rememberFailed");
+});
+
 test("confirmed colours persist across sign-ins and reset overrides an older session", () => {
   const { client, relay, session, local } = chat();
   say(client, "/color #F80");

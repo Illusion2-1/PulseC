@@ -1,9 +1,12 @@
-import { colorPattern, handle } from "../core/identity";
+import { storageKeys } from "../config";
+import { colorPattern, handle, nickPattern } from "../core/identity";
 import { applyMember, touch } from "../core/roster";
 import { t } from "../i18n/locale.svelte";
+import { readJSON, writeJSON } from "../platform/storage";
 import type { EventOf, NoticePart, ServerEvent } from "../types";
 import type { ChatClient } from "./client.svelte";
 import { describeModeration } from "./moderation";
+import { restoreLogin } from "./session";
 
 type Handlers = {
   [Op in ServerEvent["op"]]: (client: ChatClient, event: EventOf<Op>) => void;
@@ -46,9 +49,16 @@ const handlers: Handlers = {
     c.save();
   },
   nick(c, e) {
-    if (!c.identity) return;
+    if (!c.identity || !nickPattern.test(e.nick)) return;
     c.identity.nick = e.nick;
     c.save();
+    const login = restoreLogin(readJSON(c.deps.local, storageKeys.login, null));
+    if (!login) return;
+    try {
+      writeJSON(c.deps.local, storageKeys.login, { ...login, nick: e.nick });
+    } catch {
+      c.cacheError = "rememberFailed";
+    }
   },
   color(c, e) {
     if (!c.identity || (e.color !== "" && !colorPattern.test(e.color))) return;
