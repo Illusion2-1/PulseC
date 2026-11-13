@@ -104,6 +104,9 @@ export class ChatClient {
     this.composer = new ComposerState({
       users: () => this.state.users,
       self: () => handle(this.identity || {}),
+      rooms: () => [...this.rooms.keys(), ...this.known],
+      banned: () => this.state.banned ?? [],
+      ignored: () => this.ignored,
     });
   }
 

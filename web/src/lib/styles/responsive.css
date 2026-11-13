@@ -141,6 +141,8 @@
 }
 @media (pointer: coarse) {
   .input textarea,
+  .draft-paint,
+  .color-hex input,
   .field input {
     font-size: 16px;
   } /* iOS 小于 16px 会在聚焦时自动缩放页面 */
@@ -155,5 +157,8 @@
   }
   .input {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .command-help {
+    grid-column: 1 / -1;
   }
 }

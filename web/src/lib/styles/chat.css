@@ -593,6 +593,41 @@
   white-space: nowrap;
   line-height: var(--lh);
 }
+.editor {
+  position: relative;
+  min-width: 0;
+  min-height: var(--lh);
+}
+.draft-paint {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.draft-paint > div {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: var(--lh);
+}
+.command-token.valid {
+  color: #9ece6a;
+}
+.command-token.partial {
+  color: var(--amber);
+}
+.command-token.invalid,
+.command-help.invalid {
+  color: var(--red);
+}
+.ghost {
+  color: var(--fg-3);
+}
+.command-help {
+  grid-column: 2;
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: var(--lh);
+}
 .input textarea {
   all: unset;
   display: block;
@@ -600,7 +635,7 @@
   resize: none;
   font: inherit;
   line-height: var(--lh);
-  color: var(--fg);
+  color: transparent;
   caret-color: var(--amber);
   min-height: var(--lh);
   max-height: calc(var(--lh) * 8);
@@ -612,6 +647,12 @@
 }
 .input textarea::placeholder {
   color: var(--fg-2);
+}
+.editor.composing .draft-paint {
+  visibility: hidden;
+}
+.input .editor.composing textarea {
+  color: var(--fg);
 }
 .input .meta {
   white-space: nowrap;
@@ -625,7 +666,7 @@
 .input .cooldown {
   color: var(--red);
 }
-.input.throt textarea {
+.input.throt .draft-paint {
   color: var(--fg-2);
 }
 .input .over {
@@ -641,6 +682,9 @@
   left: 1ch;
   bottom: 100%;
   min-width: 34ch;
+  width: min(76ch, calc(100% - 2ch));
+  max-height: 50dvh;
+  overflow-y: auto;
   background: var(--bg-1);
   border: 1px solid var(--rule);
   border-bottom: 0;
@@ -648,17 +692,138 @@
   z-index: 5;
 }
 .pop.on {
-  display: block;
+  display: flex;
+  flex-direction: column;
+}
+.completion-options {
+  max-height: calc(9 * var(--lh));
+  min-height: 0;
+  overflow-y: auto;
+}
+.color-picker {
+  min-height: 0;
+  overflow-y: auto;
 }
 .pop button {
   width: 100%;
   padding: 0 1ch;
   display: flex;
   justify-content: space-between;
+  gap: 2ch;
+  line-height: var(--lh);
 }
 .pop button.sel {
   background: var(--amber);
   color: #000;
+}
+.candidate {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.candidate strong {
+  font-weight: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.candidate-help {
+  flex: 1;
+  text-align: right;
+  color: var(--fg-2);
+  min-width: 0;
+}
+.sel .candidate-help {
+  color: inherit;
+}
+.pop-title {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 1ch;
+  border-bottom: 1px solid var(--rule);
+  color: var(--amber);
+}
+.pop-help {
+  flex-shrink: 0;
+  padding: 2px 1ch;
+  border-top: 1px solid var(--rule);
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: var(--lh);
+}
+.color-pop {
+  width: min(58ch, calc(100% - 2ch));
+}
+.color-swatches,
+.color-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1ch;
+  padding: 6px 1ch;
+  align-items: center;
+}
+.pop .color-swatch {
+  width: 3ch;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--bg-1);
+  outline: 1px solid var(--rule);
+}
+.pop .color-swatch:is(.chosen, :focus-visible) {
+  outline: 2px solid var(--amber);
+}
+.color-fields label {
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+  color: var(--fg-1);
+}
+.color-fields input {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  color-scheme: dark;
+}
+.color-fields input[type="color"] {
+  width: 3ch;
+  height: 26px;
+  padding: 2px;
+  cursor: pointer;
+}
+.color-fields input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-fields input[type="color"]::-webkit-color-swatch {
+  border: 0;
+}
+.color-fields input[type="color"]::-moz-color-swatch {
+  border: 0;
+}
+.color-hex input {
+  width: 9ch;
+  padding: 2px 0.5ch;
+}
+.color-hex input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+.pop .color-reset {
+  width: auto;
+  padding: 0;
+  color: var(--fg-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.color-preview {
+  padding: 2px 1ch 6px;
+}
+@media (forced-colors: active) {
+  .input textarea {
+    color: CanvasText;
+  }
+  .draft-paint {
+    display: none;
+  }
 }
 
 /* 键位提示 / 移动端命令条 */

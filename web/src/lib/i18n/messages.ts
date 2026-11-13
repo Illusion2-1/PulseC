@@ -114,6 +114,92 @@ export const messages = {
   send: ["发送", "Send"],
   newline: ["换行", "New line"],
   complete: ["补全", "Complete"],
+  completionHint: [
+    "↑↓ 选择 · Tab / → 补全 · Esc 收起",
+    "↑↓ choose · Tab / → accept · Esc dismiss",
+  ],
+  commandUnknown: [
+    "未知命令 · /help 查看命令",
+    "Unknown command · /help lists commands",
+  ],
+  cmd_join: ["<频道> · 加入频道", "<channel> · Join a channel"],
+  cmd_leave: ["离开当前频道", "Leave this channel"],
+  cmd_nick: ["<新昵称> · 修改昵称", "<name> · Change nickname"],
+  cmd_me: ["<动作> · 发送动作消息", "<action> · Send an action"],
+  cmd_w: ["<昵称#trip> <消息> · 私聊", "<nick#trip> <message> · Whisper"],
+  cmd_topic: ["<主题> · 修改频道主题", "<topic> · Change channel topic"],
+  cmd_users: ["列出在线成员", "List online members"],
+  cmd_clear: ["清空当前频道的本地记录", "Clear local history for this channel"],
+  cmd_help: ["查看全部命令", "Show all commands"],
+  cmd_cancel: ["取消尚未发出的消息", "Cancel unsent messages"],
+  cmd_ignore: [
+    "<昵称#trip 或 trip> · 忽略此身份",
+    "<nick#trip or trip> · Ignore this identity",
+  ],
+  cmd_unignore: ["<trip> · 取消忽略", "<trip> · Stop ignoring this identity"],
+  cmd_forget: [
+    "清除本地聊天数据（需确认）",
+    "Clear local chat data (asks for confirmation)",
+  ],
+  cmd_color: [
+    "[#rrggbb] · 选择昵称颜色，留空恢复默认",
+    "[#rrggbb] · Choose nickname colour; omit to reset",
+  ],
+  cmd_kick: [
+    "<昵称或 trip> · 移出成员 · 管理员",
+    "<nick or trip> · Kick member · Admin",
+  ],
+  cmd_ban: [
+    "<昵称或 trip> · 封禁成员 · 管理员",
+    "<nick or trip> · Ban member · Admin",
+  ],
+  cmd_unban: ["<trip> · 解除封禁 · 管理员", "<trip> · Unban member · Admin"],
+  cmd_mute: [
+    "<昵称或 trip> · 禁言成员 · 管理员",
+    "<nick or trip> · Mute member · Admin",
+  ],
+  cmd_unmute: [
+    "<昵称或 trip> · 解除禁言 · 管理员",
+    "<nick or trip> · Unmute member · Admin",
+  ],
+  cmd_op: [
+    "<昵称或 trip> · 任命协管 · 创建者",
+    "<nick or trip> · Appoint moderator · Creator",
+  ],
+  cmd_deop: [
+    "<昵称或 trip> · 撤销协管 · 创建者",
+    "<nick or trip> · Remove moderator · Creator",
+  ],
+  cmd_slow: [
+    "<0–5> · 每 10 秒消息上限，0 为关闭 · 管理员",
+    "<0–5> · Messages per 10 s; 0 disables · Admin",
+  ],
+  cmd_lock: ["禁止新成员加入 · 管理员", "Block new members · Admin"],
+  cmd_unlock: ["允许新成员加入 · 管理员", "Allow new members · Admin"],
+  cmd_locktopic: [
+    "仅管理员可修改主题 · 管理员",
+    "Restrict topic edits to admins · Admin",
+  ],
+  cmd_unlocktopic: [
+    "允许成员修改主题 · 管理员",
+    "Allow members to edit the topic · Admin",
+  ],
+  cmd_public: [
+    "列入公共频道目录 · 管理员",
+    "List in the public directory · Admin",
+  ],
+  cmd_private: [
+    "从公共频道目录隐藏 · 管理员",
+    "Hide from the public directory · Admin",
+  ],
+  colorPicker: ["昵称颜色", "Nickname colour"],
+  customColor: ["自选颜色", "Custom colour"],
+  resetColor: ["恢复默认", "Reset to default"],
+  colorPreview: ["预览 · {name}", "Preview · {name}"],
+  colorPickerHint: [
+    "选色填入命令，回车应用；预览已适配深色背景。",
+    "Choose a colour, then Enter to apply. Preview is adjusted for the dark background.",
+  ],
   last: ["上一条", "Previous"],
   switch: ["切频道", "Switch channel"],
   bottom: ["到底部", "Latest"],
