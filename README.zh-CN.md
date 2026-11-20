@@ -17,16 +17,12 @@ PulseC 是一个可以自己搭建的匿名聊天平台。点开频道链接，�
 
 ## 界面预览
 
-moss 的 NAS 一跑异地备份，游戏语音就卡。图中固定了 `#homelab` 里 kit 给的限速建议（`↑2 ↓2`）。顺着左侧连线能找到延迟和上传速度两条实测，右侧则连到限速后的试麦结果。
-
 <p align="center">
   <a href="docs/chat.zh-CN.png"><picture>
     <source media="(max-width: 720px)" srcset="docs/thread.zh-CN.png">
     <img src="docs/chat.zh-CN.png" alt="四人在 PulseC 里排查 NAS 备份引起的卡麦。连续发言以昵称下的 T 形线分组，固定消息的来源与后续回复分列两侧。">
   </picture></a>
 </p>
-
-在 `#backups`，群友用公式和几行 Python 算剩下 9 GiB 还要传多久。手机上，moss 回报了照片还原的结果，也收到了队友的私聊。
 
 <p align="center">
   <a href="docs/backup.zh-CN.png"><img src="docs/backup.zh-CN.png" width="468" alt="备份频道里用 LaTeX 公式和高亮的 Python 代码估算剩余时间。"></a>

@@ -17,7 +17,6 @@ The server can read the messages it forwards, including private replies. It keep
 
 ## Preview
 
-In `#homelab`, moss is trying to work out why game voice chat breaks up during an off-site NAS backup. The pinned `↑2 ↓2` message suggests an upload cap. Follow the lines on the left back to the measurements and the ones on the right to the mic check.
 
 <p align="center">
   <a href="docs/chat.en.png"><picture>
@@ -26,7 +25,6 @@ In `#homelab`, moss is trying to work out why game voice chat breaks up during a
   </picture></a>
 </p>
 
-In `#backups`, a short Python snippet and an equation put an ETA on the last 9 GiB. On mobile, moss checks in after a test restore and gets a private game invite.
 
 <p align="center">
   <a href="docs/backup.en.png"><img src="docs/backup.en.png" width="468" alt="Backup ETA worked out with LaTeX and a highlighted Python snippet."></a>
