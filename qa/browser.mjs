@@ -128,22 +128,32 @@ async function checkMessageSelection(p) {
   await draft.fill("");
 }
 async function checkMessageTree(p, size) {
-  const segments = await p.locator("svg.tree-branch").evaluateAll(trees => trees.map(tree => {
-    const trunk = tree.querySelector("line").getBoundingClientRect();
-    const arm = tree.querySelector(".arm")?.getBoundingClientRect();
-    const body = tree.closest(".ln").querySelector(".tx");
-    const mid = body.getBoundingClientRect().top + parseFloat(getComputedStyle(body).lineHeight) / 2;
-    return { x: trunk.x, top: trunk.top, bottom: trunk.bottom, joint: arm?.y, mid };
+  const segments = await p.locator(".tree-trunk").evaluateAll(trunks => trunks.map(trunk => {
+    const {x, width, top, bottom} = trunk.getBoundingClientRect();
+    const row = trunk.closest(".ln"), bodyLeft = row.querySelector(".tx").getBoundingClientRect().left;
+    return { x, width, top, bottom, bodyLeft, rowBottom: row.getBoundingClientRect().bottom };
   }));
   assert.equal(segments.length, size);
-  assert.equal(segments[0].joint, undefined);
-  for (let i = 1; i < segments.length; i++) {
-    const prev = segments[i - 1], next = segments[i];
-    assert.equal(prev.x, next.x);
-    assert.equal(prev.bottom, next.top, "trunk continues across row padding");
-    assert.equal(next.joint, next.mid, "branch meets the first line of text");
+  for (const [i, segment] of segments.entries()) {
+    assert.equal(segment.width, 3, "tree is a thicker vertical rule");
+    assert.ok(Math.abs(segment.x + segment.width - segment.bodyLeft) <= 1, "trunk hugs the body divider");
+    assert.equal(segment.x, segments[0].x);
+    if (i) assert.equal(segments[i - 1].bottom, segment.top, "trunk continues across row padding");
   }
-  assert.equal(segments.at(-1).bottom, segments.at(-1).joint, "trunk ends at the last branch");
+  assert.equal(segments.at(-1).bottom, segments.at(-1).rowBottom, "trunk reaches the bottom of the final line");
+  const caps = await p.locator(".tree-cap").evaluateAll(nodes => nodes.map(cap => {
+    const nick = cap.closest(".nk"), body = cap.closest(".ln").querySelector(".tx");
+    const text = document.createRange();
+    text.selectNodeContents(nick.firstElementChild);
+    const {left, right, top} = cap.getBoundingClientRect();
+    return {left, right, top, nameLeft: text.getBoundingClientRect().left, nameBottom: nick.getBoundingClientRect().bottom,
+      textLeft: body.getBoundingClientRect().left + body.clientLeft + parseFloat(getComputedStyle(body).paddingLeft)};
+  }));
+  assert.equal(caps.length, 1, "only the first nickname gets a cap");
+  const [cap] = caps, [trunk] = segments;
+  assert.ok(Math.abs(cap.left - cap.nameLeft) < 1 && cap.top === cap.nameBottom, "cap starts under the nickname");
+  assert.equal(cap.top, trunk.top);
+  assert.ok(cap.right > trunk.x + trunk.width && cap.right < cap.textLeft, "short tip stays in the text gutter");
 }
 async function checkAlignedMath(p) {
   const formula = p.locator(".formula.display");
@@ -159,6 +169,59 @@ async function checkAlignedMath(p) {
   }
   assert.ok(await formula.evaluate(el => el.scrollHeight <= el.clientHeight + 1));
   assert.ok(await p.evaluate(() => document.querySelector(".log").scrollWidth <= document.querySelector(".log").clientWidth));
+}
+async function checkQuoteTrace(p, sourceId, middleId) {
+  const source = p.locator("#" + sourceId), middle = p.locator("#" + middleId);
+  const reply = p.locator(".ln").filter({hasText: "two-source-reply"});
+  const counter = middle.locator(".quote-count");
+  const upRail = p.locator(".quote-trace.sources"), downRail = p.locator(".quote-trace.replies");
+  await reply.waitFor();
+  assert.deepEqual(await source.locator(".quote-count span").allTextContents(), ["↓2"]);
+  assert.deepEqual(await counter.locator("span").allTextContents(), ["↑1", "↓1"]);
+  assert.deepEqual(await reply.locator(".quote-count span").allTextContents(), ["↑2"]);
+
+  await counter.click();
+  await p.locator("textarea").hover();
+  await upRail.waitFor({state: "attached"});
+  await downRail.waitFor({state: "attached"});
+  assert.equal(await counter.getAttribute("aria-pressed"), "true");
+  assert.equal(await p.locator(".ln.lit").count(), 3);
+  assert.equal(await source.locator(".quote-count .linked").textContent(), "↓2");
+  const center = row => row.evaluate(el => el.getBoundingClientRect().top +
+    parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).lineHeight) / 2);
+  // SVG geometry excludes the extra stroke margins in Chromium's box model.
+  const extents = path => path.evaluate(el => {
+    const {y, height} = el.getBBox(), matrix = el.getScreenCTM();
+    return [y, y + height].map(v => new DOMPoint(0, v).matrixTransform(matrix).y);
+  });
+  const [up, down] = await Promise.all([upRail, downRail].map(rail => extents(rail.locator(".direct .stem"))));
+  const ys = await Promise.all([source, middle, reply].map(center));
+  assert.ok(Math.abs(up[0] - ys[0]) <= 1, "bracket begins at the source's first line");
+  assert.ok(Math.abs(up[1] - ys[1]) <= 1 && Math.abs(down[0] - ys[1]) <= 1);
+  const left = await upRail.boundingBox(), right = await downRail.boundingBox();
+  assert.ok(left.x + left.width <= (await middle.locator(".lf").boundingBox()).x);
+  const counts = await counter.boundingBox();
+  assert.ok(right.x >= counts.x + counts.width, "both rails clear the message and controls");
+  assert.ok(Math.abs(down[1] - ys[2]) <= 1, "bracket ends at the reply's first line");
+  await p.keyboard.press("Escape");
+  await Promise.all([upRail, downRail].map(rail => rail.waitFor({state: "detached"})));
+  assert.equal(await counter.getAttribute("aria-pressed"), "false");
+
+  await p.keyboard.press("Shift+Tab");
+  await p.keyboard.press("Tab");
+  await upRail.waitFor({state: "attached"});
+  assert.equal(await counter.evaluate(el => el === document.activeElement), true);
+  assert.equal(await downRail.locator("g").count(), 1, "keyboard preview follows one hop");
+  await p.keyboard.press("Escape");
+  await reply.locator(".quote-count").hover();
+  await upRail.waitFor({state: "attached"});
+  assert.equal(await downRail.count(), 0);
+  assert.equal(await middle.locator(".quote-count .linked").textContent(), "↓1");
+  await reply.locator(".quote-count").click();
+  assert.equal(await upRail.locator("g").count(), 2, "pin expands the source of a source");
+  assert.equal(await upRail.locator(".direct").count(), 1);
+  await p.keyboard.press("Escape");
+  assert.ok(await p.locator(".log").evaluate(log => log.scrollWidth <= log.clientWidth));
 }
 function atLogEnd() {
   const log = document.querySelector(".log");
@@ -181,7 +244,7 @@ try {
   const bob = await page("Bob", "zh-CN", base + 1, 360);
   await alice.waitForFunction(() => document.querySelectorAll(".u").length === 2);
   const burst = Array.from({length: 6}, (_, i) => "release-check-" + i);
-  if (!process.env.QA_LEGACY_UI) burst[1] += "\nsecond line";
+  if (!process.env.QA_LEGACY_UI) burst[burst.length - 1] += "\nsecond line";
   for (const msg of burst) await send(alice, msg);
   await sees(bob, "release-check-5");
   assert.deepEqual(await messages(bob).allTextContents(), burst);
@@ -262,6 +325,10 @@ $$`;
     await late.locator(".below").click();
     await late.waitForFunction(atLogEnd);
     console.log("PASS multiline math, follow-up quotes and reading position as history rolls over");
+    const middleId = await bob.locator(".ln").filter({hasText: "after-formula"}).getAttribute("id");
+    await send(bob, ">>" + mathId.slice(2) + " >>" + middleId.slice(2) + " two-source-reply");
+    for (const p of [alice, bob]) await checkQuoteTrace(p, mathId, middleId);
+    console.log("PASS fan-out, chain and multi-source quote traces on desktop and narrow screens");
   }
   await stop(server);
   await bob.locator(".stat.off").waitFor({ timeout: 70000 });

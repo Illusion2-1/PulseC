@@ -3,7 +3,12 @@
   import { colorOf } from "#lib/core/colors.ts";
   import { clash, handle } from "#lib/core/identity.ts";
   import { mentions } from "#lib/core/text.ts";
-  import { quoteLanes, sameDay, threads } from "#lib/core/timeline.ts";
+  import {
+    quoteRelations,
+    sameDay,
+    threads,
+    traceQuotes,
+  } from "#lib/core/timeline.ts";
   import { clock, date, t } from "#lib/i18n/locale.svelte.ts";
   import { displayEvent, isWarning } from "#lib/i18n/translate.ts";
   import type { LogEntry } from "#lib/types.ts";
@@ -14,11 +19,10 @@
   const items = $derived(chat.items);
   const users = $derived(chat.state.users);
   const me = $derived(chat.identity?.nick ?? "");
-  // Trees of consecutive lines, and amber lanes from quoted to quoting rows.
   const shapes = $derived(
     threads(items, new Set(chat.firstUnread ? [chat.firstUnread] : [])),
   );
-  const links = $derived(quoteLanes(items));
+  const links = $derived(quoteRelations(items));
   const pending = $derived(
     chat.outbox.queue.filter((q) => q.room === chat.current),
   );
@@ -26,9 +30,26 @@
   // the message itself. Rows written by a person also carry a faint stripe.
   const roster = $derived(new Map(users.map((u) => [handle(u), u])));
 
-  let hot = $state.raw<LogEntry | null>(null);
-  const activeRow = $derived(hot ? items.indexOf(hot) : -1);
-  const partners = $derived(links.neighbors[activeRow]);
+  let hovered = $state.raw<LogEntry | null>(null);
+  let focused = $state.raw<LogEntry | null>(null);
+  let pinned = $state.raw<LogEntry | null>(null);
+  const active = $derived(pinned ?? hovered ?? focused);
+  const activeRow = $derived(active ? items.indexOf(active) : -1);
+  const partners = $derived(links.get(activeRow));
+  const sources = $derived(traceQuotes(links, activeRow, "sources", !!pinned));
+  const replies = $derived(traceQuotes(links, activeRow, "replies", !!pinned));
+  $effect(() => {
+    if (pinned && !links.has(items.indexOf(pinned))) pinned = null;
+  });
+
+  function release() {
+    pinned = hovered = focused = null;
+  }
+
+  function toggleTrace(m: LogEntry) {
+    if (pinned === m) release();
+    else pinned = m;
+  }
   const own = (m: LogEntry) => !!m.trip && m.trip === chat.identity?.trip;
   const spoken = (m: LogEntry) =>
     !!m.trip && (m.kind === "chat" || m.kind === "me" || m.kind === "whisper");
@@ -61,21 +82,27 @@
 </script>
 
 <svelte:document onselectionchange={updateSelection} />
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === "Escape") release();
+  }}
+/>
 
 <div
   class="log"
   data-select-from={selectedFrom}
-  style:--lanes={links.lanes}
+  class:has-quotes={links.size > 0}
   role="log"
   aria-label={t("message")}
   bind:this={chat.view.log}
   onscroll={() => chat.view.scrolled()}
 >
-  <QuoteLinks layout={links} {activeRow} />
+  <QuoteLinks {activeRow} {sources} {replies} />
   {#each items as m, i (m)}
     {@const prev = items[i - 1]}
     {@const time = clock(m.time)}
     {@const shape = shapes[i]}
+    {@const refs = links.get(i)}
     {#if !prev || !sameDay(prev.time, m.time)}<div class="div day">
         {date(m.time)}
       </div>{:else if m.time - prev.time > 300000 && !shape.leaf}<div
@@ -103,13 +130,23 @@
       class:leaf={shape.leaf}
       class:root={shape.size > 1}
       class:last={shape.last}
-      class:lit={hot === m || hot === shape.root || partners?.has(i)}
+      class:lit={active === m ||
+        (!partners && active === shape.root) ||
+        partners?.sources.has(i) ||
+        partners?.replies.has(i)}
       class:men={pinged(m)}
       class:self={own(m)}
-      onmouseenter={() => (hot = m)}
-      onmouseleave={() => (hot = null)}
-      onfocusin={() => (hot = m)}
-      onfocusout={() => (hot = null)}
+      onpointerenter={(e) => {
+        if (e.pointerType !== "touch") hovered = m;
+      }}
+      onpointerleave={() => (hovered = null)}
+      onfocusin={(e) => {
+        if (e.target instanceof Element && e.target.matches(":focus-visible")) {
+          hovered = null;
+          focused = m;
+        }
+      }}
+      onfocusout={() => (focused = null)}
     >
       <div class="lf">
         <button
@@ -132,21 +169,20 @@
           ><button
             disabled={!m.nick}
             class="nk"
-            class:clash={clash(m.nick, m.trip, users)}
             title={m.nick ? t("mention", { name: handle(m) }) : ""}
             onclick={() => m.nick && chat.composer.insert("@" + m.nick + " ")}
-            >{m.nick ||
-              (m.kind === "presence"
-                ? "±"
-                : m.kind === "sys" && isWarning(m)
-                  ? "!!"
-                  : "--")}</button
+            ><span class:clash={clash(m.nick, m.trip, users)}
+              >{m.nick ||
+                (m.kind === "presence"
+                  ? "±"
+                  : m.kind === "sys" && isWarning(m)
+                    ? "!!"
+                    : "--")}</span
+            >{#if shape.size > 1}<span class="tree-cap" aria-hidden="true"
+              ></span>{/if}</button
           >{/if}
         {#if shape.leaf || shape.size > 1}
-          <svg class="tree-branch" aria-hidden="true">
-            <line x1="0.5" x2="0.5" y2="100%" />
-            {#if shape.leaf}<line class="arm" x1="0.5" x2="100%" />{/if}
-          </svg>
+          <span class="tree-trunk" aria-hidden="true"></span>
         {/if}
       </div>
       <span class="tx"
@@ -160,6 +196,32 @@
           jump={(ref) => chat.jump(ref)}
         /></span
       >
+      {#if refs}
+        {@const folded = sources.folded.has(i) || replies.folded.has(i)}
+        {@const label =
+          t("pinQuotes", {
+            sources: refs.sources.size,
+            replies: refs.replies.size,
+          }) + (folded ? " · " + t("foldedQuotes") : "")}
+        <button
+          class="quote-count"
+          aria-label={label}
+          title={label}
+          aria-pressed={pinned === m}
+          onclick={() => toggleTrace(m)}
+        >
+          {#if refs.sources.size}<span
+              class:linked={m === active || partners?.replies.has(i)}
+              class:indirect={sources.routes.has(i) || replies.ends.has(i)}
+              >↑{refs.sources.size}{sources.folded.has(i) ? "…" : ""}</span
+            >{/if}
+          {#if refs.replies.size}<span
+              class:linked={m === active || partners?.sources.has(i)}
+              class:indirect={replies.routes.has(i) || sources.ends.has(i)}
+              >↓{refs.replies.size}{replies.folded.has(i) ? "…" : ""}</span
+            >{/if}
+        </button>
+      {/if}
     </div>
   {:else}<p class="empty">#{chat.current} · {t("empty")}</p>{/each}
   {#each pending as q (q.id)}<div class="ln pend">

@@ -1,82 +1,97 @@
 <script lang="ts">
   import { useChat } from "#lib/chat/context.ts";
-  import {
-    lanePath,
-    type LaneGeometry,
-    type Lanes,
-  } from "#lib/core/timeline.ts";
+  import { quoteLaneCount, type traceQuotes } from "#lib/core/timeline.ts";
 
-  let { layout, activeRow }: { layout: Lanes; activeRow: number } = $props();
+  type Trace = ReturnType<typeof traceQuotes>;
+  let {
+    activeRow,
+    sources,
+    replies,
+  }: {
+    activeRow: number;
+    sources: Trace;
+    replies: Trace;
+  } = $props();
   const chat = useChat();
-  let svg: SVGSVGElement | undefined = $state();
-  let geometry = $state.raw<LaneGeometry>();
-  const d = $derived(geometry ? lanePath(layout, geometry) : "");
-  const highlight = $derived(
-    geometry && layout.neighbors[activeRow]
-      ? lanePath(layout, geometry, activeRow)
-      : "",
-  );
-  let height = $state(0);
+  let centers = $state.raw<number[]>([]);
+  const height = $derived((centers.at(-1) ?? 0) + 4);
+  const width = quoteLaneCount * 8;
 
-  // Centre 1px strokes on a pixel so they stay sharp.
-  const snap = (v: number) => Math.round(v - 0.5) + 0.5;
-
-  // Reads row positions from the log. Rows are its children marked data-row;
-  // the gutter is the svg itself, (lanes + 2) characters wide less 2px.
-  function measure(log: HTMLElement, svg: SVGSVGElement, layout: Lanes) {
-    const ys: number[] = [];
-    let mid = 0,
-      bottom = 0;
-    for (const el of log.querySelectorAll<HTMLElement>(":scope > [data-row]")) {
-      if (!mid) {
-        const s = getComputedStyle(el);
-        mid = parseFloat(s.paddingTop) + parseFloat(s.lineHeight) / 2;
-      }
-      const y = snap(el.offsetTop + mid - 0.5);
-      ys[Number(el.dataset.row)] = y;
-      bottom = Math.max(bottom, y + 1);
-    }
-    const tip = svg.getBoundingClientRect().width,
-      ch = (tip + 2) / (layout.lanes + 2);
-    geometry = {
-      x: (lane) => snap((layout.lanes - lane + 0.5) * ch),
-      tip,
-      y: (row) => ys[row],
-      hop: Math.min(3, ch / 3),
-    };
-    height = bottom;
-  }
-
-  // Re-measure when the layout changes, when any row changes size (wrapping,
-  // fonts, window width) and when rows or dividers are added or removed.
+  // Use the first text line as the terminal even for wrapped rows or late math.
   $effect(() => {
-    const log = chat.view.log,
-      el = svg;
-    if (!log || !el) return;
-    const update = () => measure(log, el, layout);
-    update();
+    const log = chat.view.log;
+    if (!log) return;
+    const update = () => {
+      const ys: number[] = [];
+      const rows = log.querySelectorAll<HTMLElement>(":scope > [data-row]");
+      if (rows.length) {
+        const s = getComputedStyle(rows[0]);
+        const mid = parseFloat(s.paddingTop) + parseFloat(s.lineHeight) / 2;
+        for (const row of rows)
+          ys[Number(row.dataset.row)] = Math.floor(row.offsetTop + mid) + 0.5;
+      }
+      centers = ys;
+    };
     const sizes = new ResizeObserver(() => {
       update();
       chat.view.followBottom();
     });
-    sizes.observe(log);
     const watch = (nodes: Iterable<Node>) => {
       for (const n of nodes) if (n instanceof HTMLElement) sizes.observe(n);
     };
+    sizes.observe(log);
     watch(log.children);
-    const rows = new MutationObserver((records) => {
-      for (const r of records) watch(r.addedNodes);
+    const changes = new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.removedNodes)
+          if (n instanceof HTMLElement) sizes.unobserve(n);
+        watch(r.addedNodes);
+      }
       update();
     });
-    rows.observe(log, { childList: true });
+    changes.observe(log, { childList: true });
+    update();
     return () => {
       sizes.disconnect();
-      rows.disconnect();
+      changes.disconnect();
     };
   });
 </script>
 
-<svg class="links" bind:this={svg} {height} aria-hidden="true">
-  <path {d} />
-  {#if highlight}<path class="lit" d={highlight} />{/if}
-</svg>
+{#snippet rail(trace: Trace, side: "sources" | "replies")}
+  {#if trace.routes.size && centers.length}
+    <svg
+      class="quote-trace {side}"
+      viewBox={`0 0 ${width} ${height}`}
+      {height}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      {#each trace.routes.values() as route (route.row)}
+        {@const x = 4.5 + route.lane * 8}
+        {#if centers[route.first] !== undefined && centers[route.last] !== undefined}
+          <g class:direct={route.row === activeRow}>
+            <path
+              class="stem"
+              d={`M${x} ${centers[route.first]}V${centers[route.last]}`}
+            />
+            <path
+              d={[...route.targets]
+                .map((i) => `M${x} ${centers[i]}h-4`)
+                .join("")}
+            />
+            <rect
+              x={x - 1.5}
+              y={centers[route.row] - 1.5}
+              width="3"
+              height="3"
+            />
+          </g>
+        {/if}
+      {/each}
+    </svg>
+  {/if}
+{/snippet}
+
+{@render rail(sources, "sources")}
+{@render rail(replies, "replies")}

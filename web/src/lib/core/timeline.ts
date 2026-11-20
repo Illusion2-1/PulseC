@@ -43,152 +43,85 @@ export function threads(items: LogEntry[], breaks = new Set<LogEntry>()) {
   return out;
 }
 
-/** A quoted row and the rows quoting it, drawn in one lane. */
-export interface Link {
-  /** The quoted row. */
-  from: number;
-  /** Quoting rows in order; the line ends at the last one. */
-  to: number[];
-  /** 0 is the lane nearest the text. */
-  lane: number;
+export interface QuoteRelations {
+  sources: Set<number>;
+  replies: Set<number>;
 }
 
-/** The line from a lane toward the text on a row where links join it. */
-export interface Branch {
-  row: number;
-  /** The outermost lane joining on this row. */
-  lane: number;
-  /** Lanes passing this row that the branch crosses, nearest the branch first. */
-  over: number[];
-}
-
-export interface Lanes {
-  links: Link[];
-  /** Direct quote partners by row, including links outside the gutter. */
-  neighbors: Set<number>[];
-  /** One per row with a joint, in row order. */
-  branches: Branch[];
-  /** Lanes in use, for the gutter width. */
-  lanes: number;
-}
-
-// Quote links. Each quoted row gets one lane that runs down to its last quoter,
-// with a branch at every quoter in between. Shorter links take inner lanes and
-// pack tightly near the text; long links go outside, and are the ones left out
-// when they do not fit in `max` lanes (the >>ref stays clickable).
-export function quoteLanes(items: LogEntry[], max = 6): Lanes {
+/** Direct relationships between rows still in the visible history. */
+export function quoteRelations(items: LogEntry[]) {
   const at = new Map<string, number>();
-  items.forEach((m, i) => m.ref && at.set(m.ref, i));
-  const groups = new Map<number, number[]>();
+  const relations = new Map<number, QuoteRelations>();
+  function row(i: number) {
+    let entry = relations.get(i);
+    if (!entry) {
+      entry = { sources: new Set(), replies: new Set() };
+      relations.set(i, entry);
+    }
+    return entry;
+  }
   items.forEach((m, i) => {
-    if (!m.trip || typeof m.text !== "string" || !m.text.includes(">>")) return;
-    for (const [mark] of m.text.matchAll(messageMarks)) {
-      if (!mark.startsWith(">>")) continue;
-      const from = at.get(mark.slice(2));
-      if (from === undefined || from >= i) continue;
-      const list = groups.get(from) || [];
-      if (list.at(-1) !== i) list.push(i);
-      groups.set(from, list);
-    }
-  });
-  const end = (l: { from: number; to: number[] }) => l.to.at(-1)!;
-  const spans = [...groups]
-    .map(([from, to]) => ({ from, to }))
-    .sort((a, b) => end(a) - a.from - (end(b) - b.from) || a.from - b.from);
-  // Rows each lane covers. Two links may share a lane only with a row between
-  // them, otherwise their ends would touch and read as one line.
-  const taken: [number, number][][] = Array.from({ length: max }, () => []);
-  const links: Link[] = [];
-  const neighbors: Set<number>[] = [];
-  for (const s of spans) {
-    for (const row of s.to) {
-      (neighbors[s.from] ??= new Set()).add(row);
-      (neighbors[row] ??= new Set()).add(s.from);
-    }
-    const lane = taken.findIndex((used) =>
-      used.every(([a, b]) => b < s.from || a > end(s)),
-    );
-    if (lane < 0) continue;
-    taken[lane].push([s.from, end(s)]);
-    links.push({ ...s, lane });
-  }
-  links.sort((a, b) => a.from - b.from || a.lane - b.lane);
-
-  // On each row with a joint, the branch from the outermost joining lane
-  // crosses every lane inside it that only passes through.
-  const joints = new Map<number, Set<number>>();
-  const passing = new Map<number, Set<number>>();
-  const add = (map: Map<number, Set<number>>, row: number, lane: number) =>
-    (map.get(row) ?? map.set(row, new Set()).get(row)!).add(lane);
-  for (const l of links) {
-    add(joints, l.from, l.lane);
-    for (const row of l.to) add(joints, row, l.lane);
-    for (let row = l.from + 1; row < end(l); row++)
-      if (!l.to.includes(row)) add(passing, row, l.lane);
-  }
-  const branches = [...joints]
-    .sort(([a], [b]) => a - b)
-    .map(([row, lanes]): Branch => {
-      const lane = Math.max(...lanes);
-      const over = [...(passing.get(row) ?? [])]
-        .filter((l) => l < lane)
-        .sort((a, b) => b - a);
-      return { row, lane, over };
-    });
-  const lanes = Math.max(0, ...links.map((l) => l.lane + 1));
-  return { links, branches, lanes, neighbors };
-}
-
-/** Pixel positions measured from the rendered log. */
-export interface LaneGeometry {
-  /** x of each lane, by lane index. */
-  x: (lane: number) => number;
-  /** x where branches stop, just before the left column. */
-  tip: number;
-  /** Midline y of each row's first line; undefined if not rendered. */
-  y: (row: number) => number | undefined;
-  /** Radius of the arc where a branch hops over a lane. */
-  hop: number;
-}
-
-/** With an active row, trace only the routes between it and its quote partners. */
-export function lanePath(
-  layout: Pick<Lanes, "links" | "branches">,
-  g: LaneGeometry,
-  activeRow?: number,
-) {
-  const d: string[] = [];
-  const activeBranches = new Map<number, number>();
-  for (const l of layout.links) {
-    let targets = l.to;
-    if (activeRow !== undefined && l.from !== activeRow) {
-      if (!targets.includes(activeRow)) continue;
-      targets = [activeRow];
-    }
-    const top = g.y(l.from),
-      bottom = g.y(targets.at(-1)!);
-    if (top === undefined || bottom === undefined) continue;
-    d.push(`M${g.x(l.lane)} ${top}V${bottom}`);
-    if (activeRow !== undefined) {
-      for (const row of [l.from, ...targets]) {
-        activeBranches.set(row, Math.max(l.lane, activeBranches.get(row) ?? 0));
+    if (m.trip && typeof m.text === "string" && m.text.includes(">>")) {
+      for (const [mark] of m.text.matchAll(messageMarks)) {
+        if (!mark.startsWith(">>")) continue;
+        const source = at.get(mark.slice(2));
+        if (source === undefined) continue;
+        row(i).sources.add(source);
+        row(source).replies.add(i);
       }
     }
-  }
-  for (const b of layout.branches) {
-    const start = activeRow === undefined ? b.lane : activeBranches.get(b.row);
-    if (start === undefined) continue;
-    const y = g.y(b.row);
-    if (y === undefined) continue;
-    let path = `M${g.x(start)} ${y}`;
-    // A crossing is drawn as a half circle over the lane, never as a gap or
-    // a plain cross, so it cannot be mistaken for a joint or a break.
-    for (const lane of b.over) {
-      if (lane >= start) continue;
-      const x = g.x(lane);
-      path += `H${x - g.hop}A${g.hop} ${g.hop} 0 0 1 ${x + g.hop} ${y}`;
+    if (m.ref) at.set(m.ref, i);
+  });
+  return relations;
+}
+
+export const quoteLaneCount = 4;
+
+interface QuoteRoute {
+  row: number;
+  targets: Set<number>;
+  first: number;
+  last: number;
+  lane: number;
+}
+
+export function traceQuotes(
+  relations: Map<number, QuoteRelations>,
+  activeRow: number,
+  direction: keyof QuoteRelations,
+  expanded: boolean,
+) {
+  const routes = new Map<number, QuoteRoute>();
+  const ends = new Set<number>();
+  const folded = new Set<number>();
+  const lanes: QuoteRoute[][] = Array.from(
+    { length: quoteLaneCount },
+    () => [],
+  );
+  const queue = [activeRow];
+
+  // Nearest relatives get first choice of lanes. A shared ancestor or reply
+  // gets a terminal on every incoming route, but is expanded only once.
+  for (let i = 0; i < queue.length; i++) {
+    const row = queue[i];
+    const targets = relations.get(row)?.[direction];
+    if (!targets?.size) continue;
+    const first = Math.min(row, ...targets),
+      last = Math.max(row, ...targets);
+    const lane = lanes.findIndex((used) =>
+      used.every((route) => route.last < first || last < route.first),
+    );
+    if (lane < 0) {
+      folded.add(row);
+      continue;
     }
-    d.push(path + `H${g.tip}`);
+    const route = { row, targets, first, last, lane };
+    routes.set(row, route);
+    lanes[lane].push(route);
+    for (const target of targets) {
+      if (expanded && !ends.has(target)) queue.push(target);
+      ends.add(target);
+    }
   }
-  return d.join("");
+  return { routes, ends, folded };
 }

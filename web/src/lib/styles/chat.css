@@ -75,7 +75,7 @@
 }
 
 /* 消息日志
- * 每行：[引用线道] [左栏：时间 · trip · 昵称] │ 正文
+ * 每行：[来源线道] [时间 · trip · 昵称] │ 正文 [引用计数] [回复线道]
  * 行距：行与行之间多 4px，行内多行文本保持 20px 行高 */
 .log {
   grid-area: log;
@@ -84,8 +84,6 @@
   position: relative;
   overscroll-behavior: contain;
   --pad: 2px;
-  --mid: calc(var(--pad) + var(--lh) / 2);
-  --lane: 1ch;
   min-width: 0;
   min-height: 0;
 }
@@ -94,10 +92,7 @@
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 1ch;
   position: relative;
-  padding: var(--pad) 1ch var(--pad)
-    calc(
-      1ch - 2px + var(--lanes, 0) * var(--lane) + min(var(--lanes, 0), 1) * 1ch
-    );
+  padding: var(--pad) var(--quote-inset, 1ch) var(--pad) calc(var(--quote-inset, 1ch) - 2px);
   border-left: 2px solid transparent;
   line-height: var(--lh);
 }
@@ -176,52 +171,100 @@
   text-underline-offset: 3px;
 }
 
-/* 树：同一人 10 分钟内的连续发言，首条是树顶，后续行不再署名，用枝线挂在树顶下。
- * 枝线位于昵称列右侧 2ch 处，颜色取发言人身份色 */
-.tree-branch {
-  position: absolute;
-  right: 0;
-  top: calc(-1 * var(--pad));
-  width: 2ch;
-  height: calc(100% + 2 * var(--pad));
+/* 树顶的横线随可见昵称等宽，右端伸入正文前的留白。 */
+.root .nk {
+  display: grid;
+  grid-template-columns: fit-content(100%);
+  justify-content: end;
+  position: relative;
   overflow: visible;
+}
+.root .nk > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-cap {
+  position: absolute;
+  grid-area: 1 / 1;
+  left: 0;
+  right: -4px;
+  top: 100%;
+  height: 2px;
+}
+.tree-cap,
+.tree-trunk {
+  background: color-mix(in srgb, var(--who, var(--fg-2)) 75%, transparent);
   pointer-events: none;
-  stroke: color-mix(in srgb, var(--who, var(--fg-2)) 55%, transparent);
-  shape-rendering: crispEdges;
 }
-.root .tree-branch {
+.tree-trunk {
+  position: absolute;
+  right: -1px;
+  top: calc(-1 * var(--pad));
+  bottom: calc(-1 * var(--pad));
+  width: 3px;
+}
+.root .tree-trunk {
   top: var(--lh);
-  height: calc(100% - var(--lh) + var(--pad));
-}
-.last .tree-branch {
-  height: var(--mid);
-}
-.tree-branch .arm {
-  transform: translateY(var(--mid));
 }
 
-/* 引用线：亮琥珀色，从被引用的行出发，沿左侧线道连到每一条引用它的行。
- * 整个日志共用一张 SVG，每条线是一笔连续的路径；横线越过别的线道时画成半圆跨线 */
-.links {
+/* 引用来源在左、后续回复在右。悬停与固定共用两侧留白，正文位置稳定。 */
+.log.has-quotes {
+  --trace-muted: color-mix(in srgb, var(--amber) 47%, var(--fg-2));
+  --trace-width: clamp(20px, 3vw, 32px);
+  --quote-inset: calc(var(--trace-width) + 5px);
+}
+.ln:has(.quote-count) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.quote-count {
+  display: flex;
+  align-self: start;
+  align-items: center;
+  gap: 0.5ch;
+  padding-inline: 0.5ch;
+  color: var(--fg-2);
+  user-select: none;
+}
+.quote-count .indirect {
+  color: var(--trace-muted);
+}
+.quote-count .linked {
+  color: var(--amber);
+}
+.quote-count[aria-pressed="true"] {
+  outline: 1px solid var(--amber);
+  outline-offset: -1px;
+}
+.quote-trace {
   position: absolute;
-  /* 阅读旧消息时，让可见的消息行成为滚动锚点。 */
-  overflow-anchor: none;
   top: 0;
-  left: 0;
-  width: calc((var(--lanes, 0) + 2) * 1ch - 2px);
-  overflow: visible;
+  width: var(--trace-width);
+  overflow-anchor: none;
   pointer-events: none;
   z-index: 1;
+  color: var(--trace-muted);
+  shape-rendering: crispEdges;
 }
-.links path {
+.quote-trace.sources {
+  left: 3px;
+  transform: scaleX(-1);
+}
+.quote-trace.replies {
+  right: 3px;
+}
+.quote-trace .direct {
+  color: var(--amber);
+}
+.quote-trace path {
   fill: none;
-  stroke: var(--amber);
-  stroke-width: 1px;
-  stroke-linecap: square;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
 }
-.links path.lit {
-  stroke: color-mix(in srgb, var(--amber) 65%, white);
-  stroke-width: 2px;
+.quote-trace rect {
+  fill: currentColor;
+}
+.quote-trace.sources .stem {
+  stroke-dasharray: 3 2;
 }
 
 /* 悬停或聚焦时高亮该行及其直接引用的两端；树顶行也高亮整棵树 */
@@ -371,8 +414,7 @@
   color: var(--amber);
   line-height: var(--lh);
   position: relative;
-  padding: 2px 1ch 2px
-    calc(1ch + var(--lanes, 0) * var(--lane) + min(var(--lanes, 0), 1) * 1ch);
+  padding: 2px var(--quote-inset, 1ch);
 }
 .div::before,
 .div::after {

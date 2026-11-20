@@ -1,10 +1,11 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  lanePath,
-  quoteLanes,
+  quoteLaneCount,
+  quoteRelations,
   sameDay,
   threads,
+  traceQuotes,
 } from "../src/lib/core/timeline";
 import type { LogEntry } from "../src/lib/types";
 
@@ -59,115 +60,96 @@ test("consecutive lines form trees until interrupted or ten minutes pass", () =>
   assert.equal(threads(items, new Set([a2]))[1].leaf, false, "divider breaks");
 });
 
-test("quote lanes connect quoted and quoting rows", () => {
+test("fan-out, chains and multiple sources keep their direction", () => {
   const items = [
     msg("a", 1, "first", "chat", "aaaaaaaaaaaa"),
-    msg("b", 2, "second", "chat", "bbbbbbbbbbbb"),
-    msg("c", 3, ">>aaaaaaaaaaaa yes"),
-    msg("d", 4, ">>bbbbbbbbbbbb and >>aaaaaaaaaaaa"),
-    msg("e", 5, "`>>bbbbbbbbbbbb` in code, >>ffffffffffff missing"),
+    msg("b", 2, ">>aaaaaaaaaaaa", "chat", "bbbbbbbbbbbb"),
+    msg("c", 3, ">>aaaaaaaaaaaa >>bbbbbbbbbbbb and >>aaaaaaaaaaaa"),
+    msg("d", 4, ">>bbbbbbbbbbbb"),
+    msg("e", 5, "`>>bbbbbbbbbbbb` and >>ffffffffffff missing"),
     msg("f", 6, "$$\\text{>>aaaaaaaaaaaa}$$ inside math"),
   ];
-  const layout = quoteLanes(items);
-  assert.equal(layout.lanes, 2);
-  // b→d is shorter, so it takes the inner lane; a's branch to c hops over it.
-  assert.deepEqual(layout.links, [
-    { from: 0, to: [2, 3], lane: 1 },
-    { from: 1, to: [3], lane: 0 },
-  ]);
-  assert.deepEqual(layout.branches, [
-    { row: 0, lane: 1, over: [] },
-    { row: 1, lane: 0, over: [] },
-    { row: 2, lane: 1, over: [0] },
-    { row: 3, lane: 1, over: [] },
-  ]);
-  assert.deepEqual(layout.neighbors[0], new Set([2, 3]));
-  assert.deepEqual(layout.neighbors[2], new Set([0]));
-  assert.deepEqual(layout.neighbors[3], new Set([0, 1]));
-  const geometry = {
-    x: (lane: number) => 20 - lane * 10,
-    tip: 30,
-    y: (row: number) => row * 20,
-    hop: 3,
-  };
-  assert.equal(
-    lanePath(layout, geometry, 2),
-    "M10 0V40M10 0H30M10 40H17A3 3 0 0 1 23 40H30",
-    "the hovered reply keeps the crossing and stops before its sibling",
-  );
-  assert.equal(
-    lanePath(layout, geometry, 1),
-    "M20 20V60M20 20H30M20 60H30",
-    "the hovered source lights only its part of the shared branch",
-  );
-  const one = quoteLanes(items, 1);
+  const links = quoteRelations(items);
   assert.deepEqual(
-    one.neighbors,
-    layout.neighbors,
-    "lane cap only limits drawing",
+    links,
+    new Map([
+      [0, { sources: new Set(), replies: new Set([1, 2]) }],
+      [1, { sources: new Set([0]), replies: new Set([2, 3]) }],
+      [2, { sources: new Set([0, 1]), replies: new Set() }],
+      [3, { sources: new Set([1]), replies: new Set() }],
+    ]),
   );
   assert.deepEqual(
-    one.links,
-    [{ from: 1, to: [3], lane: 0 }],
-    "longest dropped",
+    quoteRelations(items.slice(2)),
+    new Map(),
+    "sources left history",
   );
 });
 
-test("quote lanes only cross where links overlap", () => {
-  const ref = (n: number) => String(n).repeat(12);
-  const row = (n: number, text = "x") => msg("u" + n, n, text, "chat", ref(n));
-  // 0→2 and 1→3 overlap without nesting; 4→5 fits back into a free lane.
-  const items = [
-    row(0),
-    row(1),
-    row(2, ">>" + ref(0)),
-    row(3, ">>" + ref(1)),
-    row(4),
-    row(5, ">>" + ref(4)),
-  ];
-  const layout = quoteLanes(items);
-  assert.equal(layout.lanes, 2);
-  assert.deepEqual(layout.links, [
-    { from: 0, to: [2], lane: 0 },
-    { from: 1, to: [3], lane: 1 },
-    { from: 4, to: [5], lane: 0 },
-  ]);
-  // Lane 1 starts while lane 0 runs: its branch hops over lane 0 on row 1.
-  // Lane 1 passes row 2, but lane 0's branch runs the other way and misses it.
-  assert.deepEqual(
-    layout.branches.map((b) => [b.row, b.lane, b.over]),
-    [
-      [0, 0, []],
-      [1, 1, [0]],
-      [2, 0, []],
-      [3, 1, []],
-      [4, 0, []],
-      [5, 0, []],
-    ],
+test("dense quotes retain every source and exclude forward and self references", () => {
+  const refs = Array.from({ length: 9 }, (_, i) =>
+    i.toString(16).padStart(12, "0"),
   );
+  const items = refs.map((ref, i) =>
+    msg("a", i, ">>" + refs.at(-1), "chat", ref),
+  );
+  items.push(msg("b", 10, refs.map((ref) => ">>" + ref).join(" ")));
+  const links = quoteRelations(items);
+  assert.deepEqual(links.get(9)?.sources, new Set(refs.keys()));
+  for (let i = 0; i < refs.length; i++) {
+    assert.deepEqual(links.get(i), {
+      sources: new Set(),
+      replies: new Set([9]),
+    });
+  }
 });
 
-test("lane paths are continuous and hop over crossed lanes", () => {
-  const layout = {
-    lanes: 2,
-    links: [
-      { from: 0, to: [2], lane: 0 },
-      { from: 1, to: [3], lane: 1 },
-    ],
-    branches: [
-      { row: 1, lane: 1, over: [0] },
-      { row: 3, lane: 1, over: [] },
-    ],
-  };
-  const d = lanePath(layout, {
-    x: (lane) => 20 - lane * 10,
-    tip: 30,
-    y: (row) => (row === 2 ? undefined : row * 20),
-    hop: 3,
-  });
-  assert.equal(
-    d,
-    // 0→2 is skipped: row 2 is not rendered.
-    "M10 20V60" + "M10 20H17A3 3 0 0 1 23 20H30" + "M10 60H30",
+function graph(parents: number[][]) {
+  const ref = (i: number) => i.toString(16).padStart(12, "0");
+  return quoteRelations(
+    parents.map((sources, i) =>
+      msg(
+        "u",
+        i,
+        sources.map((row) => ">>" + ref(row)).join(" "),
+        "chat",
+        ref(i),
+      ),
+    ),
   );
+}
+
+test("pin follows ancestors and descendants through forks and joins", () => {
+  const links = graph([[], [0], [0], [1, 2], [3], [3], [4, 5], [2], [6]]);
+  const preview = traceQuotes(links, 3, "replies", false);
+  assert.deepEqual([...preview.routes.keys()], [3]);
+  assert.deepEqual(preview.ends, new Set([4, 5]));
+  const up = traceQuotes(links, 3, "sources", true);
+  const down = traceQuotes(links, 3, "replies", true);
+  assert.deepEqual(up.ends, new Set([0, 1, 2]));
+  assert.deepEqual(down.ends, new Set([4, 5, 6, 8]));
+  assert.deepEqual([...down.routes.keys()], [3, 4, 5, 6]);
+  assert.deepEqual(
+    [...down.routes.values()].map((r) => r.lane),
+    [0, 1, 2, 0],
+  );
+  assert.deepEqual(down.routes.get(4)?.targets, new Set([6]));
+  assert.deepEqual(down.routes.get(5)?.targets, new Set([6]));
+});
+
+test("busy lanes fold at a visible message that can become the new focus", () => {
+  const forks = Array.from({ length: quoteLaneCount + 2 }, (_, i) => i + 1);
+  const links = graph([[], ...forks.map(() => [0]), forks]);
+  const trace = traceQuotes(links, 0, "replies", true);
+  assert.equal(trace.routes.size, quoteLaneCount);
+  assert.deepEqual(trace.folded, new Set(forks.slice(quoteLaneCount - 1)));
+  for (const row of trace.folded) {
+    assert.ok(trace.ends.has(row));
+    const focused = traceQuotes(links, row, "replies", true);
+    assert.deepEqual(
+      focused.routes.get(row)?.targets,
+      new Set([forks.length + 1]),
+    );
+    assert.equal(focused.folded.size, 0);
+  }
 });

@@ -78,6 +78,14 @@ export const messages = {
   noTopic: ["暂无主题", "No topic"],
   unread: ["{count} 条未读", "{count} unread"],
   quote: ["引用", "Quote"],
+  pinQuotes: [
+    "↑ 引用 {sources} 条 · ↓ 被 {replies} 条消息引用 · 点按固定并展开引用链，再点收起",
+    "↑ Quotes {sources} · ↓ Quoted by {replies} · Pin and expand the quote chain, or unpin",
+  ],
+  foldedQuotes: [
+    "… 此处分支已折叠，点按可从这条消息展开",
+    "… Branch folded here. Select this message to trace it.",
+  ],
   empty: ["此标签页尚未收到消息。", "No messages received in this tab yet."],
   queued: ["待发", "Queued"],
   retryJoin: [
