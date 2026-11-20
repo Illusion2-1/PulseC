@@ -17,12 +17,23 @@ PulseC 是一个可以自己搭建的匿名聊天平台。点开频道链接，�
 
 ## 界面预览
 
-![桌面聊天中的 LaTeX 公式和 JavaScript 语法高亮](docs/chat.zh-CN.png)
+moss 的 NAS 一跑异地备份，游戏语音就卡。图中固定了 `#homelab` 里 kit 给的限速建议（`↑2 ↓2`）。顺着左侧连线能找到延迟和上传速度两条实测，右侧则连到限速后的试麦结果。
 
-<p>
-  <a href="docs/soundcheck.zh-CN.png"><img src="docs/soundcheck.zh-CN.png" width="69%" alt="多行对齐公式和 Python 语法高亮"></a>
-  <a href="docs/mobile.zh-CN.png"><img src="docs/mobile.zh-CN.png" width="28%" alt="手机端聊天中的提及和私聊"></a>
+<p align="center">
+  <a href="docs/chat.zh-CN.png"><picture>
+    <source media="(max-width: 720px)" srcset="docs/thread.zh-CN.png">
+    <img src="docs/chat.zh-CN.png" alt="四人在 PulseC 里排查 NAS 备份引起的卡麦。连续发言以昵称下的 T 形线分组，固定消息的来源与后续回复分列两侧。">
+  </picture></a>
 </p>
+
+在 `#backups`，群友用公式和几行 Python 算剩下 9 GiB 还要传多久。手机上，moss 回报了照片还原的结果，也收到了队友的私聊。
+
+<p align="center">
+  <a href="docs/backup.zh-CN.png"><img src="docs/backup.zh-CN.png" width="468" alt="备份频道里用 LaTeX 公式和高亮的 Python 代码估算剩余时间。"></a>
+  <a href="docs/mobile.zh-CN.png"><img src="docs/mobile.zh-CN.png" width="312" alt="手机端聊天中的提及、照片还原结果和私聊邀请。"></a>
+</p>
+
+### 消息投递延迟
 
 ![单机模拟 512 人在线。99% 的消息投递在单频道用时 13.34 毫秒，均分到 32 个频道时用时 0.76 毫秒。每种配置取三轮中位数。](docs/latency.zh-CN.png)
 

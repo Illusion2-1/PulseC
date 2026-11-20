@@ -17,12 +17,23 @@ The server can read the messages it forwards, including private replies. It keep
 
 ## Preview
 
-![Desktop chat with LaTeX and JavaScript syntax highlighting](docs/chat.en.png)
+In `#homelab`, moss is trying to work out why game voice chat breaks up during an off-site NAS backup. The pinned `↑2 ↓2` message suggests an upload cap. Follow the lines on the left back to the measurements and the ones on the right to the mic check.
 
-<p>
-  <a href="docs/soundcheck.en.png"><img src="docs/soundcheck.en.png" width="69%" alt="Aligned equations and highlighted Python"></a>
-  <a href="docs/mobile.en.png"><img src="docs/mobile.en.png" width="28%" alt="Mobile chat with mentions and private replies"></a>
+<p align="center">
+  <a href="docs/chat.en.png"><picture>
+    <source media="(max-width: 720px)" srcset="docs/thread.en.png">
+    <img src="docs/chat.en.png" alt="Four people troubleshoot a NAS backup in PulseC, with the sources and replies to kit’s message pinned on opposite sides of the chat.">
+  </picture></a>
 </p>
+
+In `#backups`, a short Python snippet and an equation put an ETA on the last 9 GiB. On mobile, moss checks in after a test restore and gets a private game invite.
+
+<p align="center">
+  <a href="docs/backup.en.png"><img src="docs/backup.en.png" width="468" alt="Backup ETA worked out with LaTeX and a highlighted Python snippet."></a>
+  <a href="docs/mobile.en.png"><img src="docs/mobile.en.png" width="312" alt="Phone view with a mention, a photo restore check and a whispered game invite."></a>
+</p>
+
+### Delivery latency
 
 ![With 512 clients on one machine, 99% of deliveries took up to 13.34 ms in a single channel or 0.76 ms when split across 32 channels. Median of three runs per layout.](docs/latency.en.png)
 
